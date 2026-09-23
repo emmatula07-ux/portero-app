@@ -1,0 +1,29 @@
+# Supabase CLI config — reemplazá "your-project-ref" al vincular el proyecto
+project_id = "your-project-ref"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["https://localhost:3000"]
+jwt_expiry = 3600
+enable_signup = true
+
+[functions.search-residents]
+verify_jwt = false
+
+[functions.create-visit]
+verify_jwt = false
+
+[functions.visit-status]
+verify_jwt = false
