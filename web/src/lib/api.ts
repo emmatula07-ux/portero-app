@@ -1,7 +1,6 @@
 export interface ResidentResult {
   id: string;
-  display_name: string | null;
-  first_name: string;
+  display_name: string;
   unit_display_name: string | null;
   building: string | null;
   floor: string | null;

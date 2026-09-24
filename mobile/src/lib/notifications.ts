@@ -30,8 +30,11 @@ export async function ensureNotificationChannels() {
   });
 }
 
+const IS_EXPO_GO = Constants.appOwnership === "expo";
+
 export async function registerPushToken(userId: string) {
   try {
+    if (IS_EXPO_GO) return false;
     if (!Device.isDevice) return false;
 
     const perms = await Notifications.getPermissionsAsync();

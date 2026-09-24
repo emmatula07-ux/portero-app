@@ -52,7 +52,8 @@ El script pide los 3 valores del Paso 1 y una **clave de administrador** (podés
 En **https://supabase.com/dashboard** → tu proyecto → **SQL Editor** → **New query**:
 
 1. Abrí el archivo `supabase/migrations/0001_init.sql`, copiá **todo** y pegalo. Presioná **Run**.
-2. Hacé lo mismo con `supabase/seed.sql`.
+2. Hacé lo mismo con `supabase/migrations/0002_search_privacy.sql` (privacidad de nombres en la búsqueda).
+3. Por último `supabase/seed.sql`.
 
 ### Paso 4 — Desplegar las funciones y arrancar
 
@@ -156,6 +157,7 @@ Si querés que **todo** (base de datos, auth y funciones) corra en tu PC sin usa
 ```
 supabase/
   migrations/0001_init.sql      # schema + seguridad (RLS)
+  migrations/0002_search_privacy.sql  # búsqueda con nombres ofuscados
   seed.sql                      # datos de ejemplo
   functions/                    # Edge Functions (search-residents, create-visit, visit-status, open-access, claim-invitation)
 web/                            # web visitante + panel admin (Next.js)

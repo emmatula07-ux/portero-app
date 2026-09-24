@@ -7,11 +7,21 @@
     "icon": "./assets/icon.png",
     "scheme": "portero",
     "userInterfaceStyle": "dark",
-    "plugins": ["expo-notifications"],
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#2563eb",
+          "defaultChannel": "default"
+        }
+      ]
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.portero.app"
     },
     "android": {
+      "package": "com.portero.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -22,6 +32,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "82ce56dc-e47c-4732-adcc-1db820d585e7"
+      }
+    },
+    "owner": "emmatula07s-team"
   }
 }

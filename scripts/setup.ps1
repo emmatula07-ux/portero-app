@@ -42,7 +42,8 @@ Write-Host "=== PASO 2 de 3: crear la base de datos ===" -ForegroundColor Cyan
 Write-Host "En https://supabase.com/dashboard -> tu proyecto -> SQL Editor,"
 Write-Host "pega y ejecuta EN ESTE ORDEN:"
 Write-Host "  1) el contenido de: supabase/migrations/0001_init.sql"
-Write-Host "  2) el contenido de: supabase/seed.sql"
+Write-Host "  2) el contenido de: supabase/migrations/0002_search_privacy.sql"
+Write-Host "  3) el contenido de: supabase/seed.sql"
 Write-Host ""
 Write-Host "=== PASO 3 de 3: desplegar las funciones ===" -ForegroundColor Cyan
 Write-Host "Ejecuta:  powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1"

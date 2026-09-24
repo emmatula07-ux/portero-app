@@ -150,7 +150,7 @@ export default function VisitorFlow({ token }: { token: string }) {
           </h1>
           <p className="text-zinc-400 text-sm">
             {step === "search"
-              ? "Buscá por nombre, apellido o departamento."
+              ? "Buscá por nombre y apellido (mínimo 2 palabras) o por departamento."
               : "Completá los datos opcionales y avisá."}
           </p>
         </header>
@@ -167,7 +167,7 @@ export default function VisitorFlow({ token }: { token: string }) {
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Ej: Juan o 4B"
+              placeholder="Ej: Juan Pérez o 4B"
               className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <div className="space-y-2">
@@ -181,7 +181,7 @@ export default function VisitorFlow({ token }: { token: string }) {
                   onClick={() => selectResident(r)}
                   className="w-full text-left rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-3 hover:border-blue-500 transition"
                 >
-                  <p className="font-semibold">{r.display_name || r.first_name}</p>
+                  <p className="font-semibold">{r.display_name}</p>
                   <p className="text-sm text-zinc-400">{unitLabel(r)}</p>
                 </button>
               ))}
@@ -192,7 +192,7 @@ export default function VisitorFlow({ token }: { token: string }) {
         {step === "details" && selected && (
           <div className="space-y-4">
             <div className="rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-3">
-              <p className="font-semibold">{selected.display_name || selected.first_name}</p>
+              <p className="font-semibold">{selected.display_name}</p>
               <p className="text-sm text-zinc-400">{unitLabel(selected)}</p>
             </div>
 
@@ -244,7 +244,7 @@ export default function VisitorFlow({ token }: { token: string }) {
                 disabled={sending}
                 className="flex-1 py-3 rounded-xl bg-blue-600 font-semibold hover:bg-blue-500 disabled:opacity-50"
               >
-                {sending ? "Enviando…" : `Avisar a ${selected.first_name}`}
+                {sending ? "Enviando…" : `Avisar a ${selected.display_name}`}
               </button>
             </div>
           </div>
