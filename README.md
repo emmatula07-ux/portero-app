@@ -45,7 +45,7 @@ En PowerShell, en la carpeta del proyecto:
 powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 ```
 
-El script pide los 3 valores del Paso 1 y una **clave de administrador** (podés dejarla vacía y te genera una — **guardala**, la usás para entrar al panel). Escribe los archivos de configuración automáticamente.
+El script pide los 3 valores del Paso 1 (Project URL, anon key y service role key) y escribe los archivos de configuración automáticamente.
 
 ### Paso 3 — Crear la base de datos (2 copiar-pegar)
 
@@ -85,11 +85,18 @@ Buscá `Juan` → seleccioná `Juan Pérez` → poné tu nombre → **Avisar**.
 ```
 http://localhost:3000/admin
 ```
-Ingresá la clave de administrador. Ahí podés:
+Se entra con **email y contraseña** (Supabase Auth). Hay 3 roles:
+- **DEVELOPER** (el dueño de la plataforma): ve y crea **todos** los edificios, asigna administradores, ve la auditoría global.
+- **ADMIN** (el administrador de un consorcio): ve **solo los edificios que se le asignaron**. Gestiona unidades, residentes, accesos, deudas, invitaciones y visitas de sus edificios.
+- **RESIDENT** (propietario): usa la app móvil.
+
+En el panel podés:
+- **Edificios** (DEVELOPER) → crear edificios/barrios.
+- **Administradores** (DEVELOPER) → asignar un email a uno o más edificios.
 - **Unidades** → cambiar estado de expensas (`OK`/`WARNING`/`BLOCKED`) y monto de deuda.
 - **Accesos** → ver el QR de cada entrada y rotarlo.
 - **Invitaciones** → generar un código para que un propietario asocie su teléfono.
-- **Visitas / Auditoría** → ver todo lo registrado.
+- **Visitas / Auditoría** → ver la actividad.
 
 ### Propietario (app móvil)
 1. En la ventana de Expo, escaneá el QR con tu teléfono (app **Expo Go**, gratis).

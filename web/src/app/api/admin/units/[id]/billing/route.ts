@@ -1,13 +1,14 @@
-import { guard, json, err } from "@/lib/admin";
+import { guard, json, err, canAccessUnit } from "@/lib/admin";
 import { sendExpoPush, getUnitDevices } from "@/lib/push";
 
 const VALID = ["OK", "WARNING", "BLOCKED"];
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const g = await guard();
+  const g = await guard(req);
   if (g.unauthorized) return err("No autorizado", 401);
   const admin = g.admin;
   const { id } = await params;
+  if (!(await canAccessUnit(admin, g.actor, id))) return err("No autorizado sobre esta unidad", 403);
 
   const body = await req.json().catch(() => ({}));
   const billingStatus = String(body.billingStatus ?? "").toUpperCase();
@@ -65,7 +66,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   );
 
   await admin.from("audit_logs").insert({
-    actor_type: "admin",
+    actor_type: "user",
+    actor_id: g.actor.userId,
     action: "BILLING_STATUS_UPDATED",
     entity_type: "unit",
     entity_id: id,

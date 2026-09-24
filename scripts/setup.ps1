@@ -13,21 +13,12 @@ Write-Host ""
 $url = Read-Host "Supabase URL (https://xxxx.supabase.co)"
 $anon = Read-Host "Anon (public) key"
 $service = Read-Host "Service role key (secreta)"
-$secret = Read-Host "Clave del panel de administracion (dejala vacia para generar una)"
-
-if ([string]::IsNullOrWhiteSpace($secret)) {
-  $secret = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ })
-  Write-Host ""
-  Write-Host "Tu clave de administrador es: $secret" -ForegroundColor Yellow
-  Write-Host "GUARDALA. La usas para entrar a /admin" -ForegroundColor Yellow
-  Write-Host ""
-}
 
 # web/.env.local
 @"
 NEXT_PUBLIC_SUPABASE_URL=$url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=$anon
 SUPABASE_SERVICE_ROLE_KEY=$service
-ADMIN_SECRET=$secret
 "@ | Set-Content -Path (Join-Path $root "web\.env.local") -Encoding utf8
 
 # mobile/.env

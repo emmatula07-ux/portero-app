@@ -2,15 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { supabase } from "@/lib/supabase-client";
 
 type Tab =
   | "overview"
+  | "properties"
   | "units"
   | "residents"
   | "access"
   | "permissions"
   | "controllers"
   | "invitations"
+  | "admins"
   | "visits"
   | "audit";
 
@@ -21,26 +24,34 @@ const BILLING_COLOR: Record<string, string> = {
 };
 
 async function api(path: string, options?: RequestInit) {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
   const res = await fetch(`/api/admin${path}`, {
     ...options,
-    headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(options?.headers ?? {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
   });
   if (res.status === 401) throw new Error("UNAUTHORIZED");
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? "Error");
-  return data;
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error ?? "Error");
+  return json;
 }
 
 export default function AdminPanel() {
-  const [authed, setAuthed] = useState<boolean | null>(null);
-  const [secret, setSecret] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [authed, setAuthed] = useState(false);
+  const [role, setRole] = useState("");
+  const [properties, setProperties] = useState<{ id: string; name: string }[]>([]);
+  const [propertyId, setPropertyId] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  const [properties, setProperties] = useState<any[]>([]);
-  const [propertyId, setPropertyId] = useState<string>("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   const [overview, setOverview] = useState<any>({});
   const [units, setUnits] = useState<any[]>([]);
@@ -49,50 +60,68 @@ export default function AdminPanel() {
   const [permissions, setPermissions] = useState<any[]>([]);
   const [controllers, setControllers] = useState<any[]>([]);
   const [invitations, setInvitations] = useState<any[]>([]);
+  const [admins, setAdmins] = useState<any[]>([]);
   const [visits, setVisits] = useState<any[]>([]);
   const [audit, setAudit] = useState<any[]>([]);
 
   const notify = (msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 4000);
   };
 
-  const refresh = useCallback(async () => {
-    setError(null);
-    try {
-      const [ov, props] = await Promise.all([
-        api("/overview"),
-        api("/properties"),
-      ]);
-      setOverview(ov);
-      setProperties(props);
-      if (!propertyId && props.length) setPropertyId(props[0].id);
-    } catch (e: any) {
-      if (e.message === "UNAUTHORIZED") setAuthed(false);
-      else setError(e.message);
-    }
-  }, [propertyId]);
+  const loadMe = useCallback(async () => {
+    const m = await api("/me");
+    setRole(m.role);
+    setProperties(m.properties ?? []);
+    if (m.properties?.length) setPropertyId((p) => p || m.properties[0].id);
+    return m;
+  }, []);
 
   useEffect(() => {
-    if (authed === null) {
-      api("/overview")
-        .then(() => setAuthed(true))
-        .catch(() => setAuthed(false));
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session) {
+        try {
+          await loadMe();
+          setAuthed(true);
+        } catch {
+          setAuthed(false);
+        }
+      }
+      setLoading(false);
+    });
+  }, [loadMe]);
+
+  async function login() {
+    setError(null);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    if (error) {
+      setError(error.message);
+      return;
     }
-  }, [authed]);
+    await loadMe();
+    setAuthed(true);
+    setEmail("");
+    setPassword("");
+  }
+
+  async function logout() {
+    await supabase.auth.signOut();
+    setAuthed(false);
+    setRole("");
+    setProperties([]);
+    setPropertyId("");
+  }
 
   useEffect(() => {
     if (!authed) return;
-    refresh();
-  }, [authed, refresh]);
-
-  useEffect(() => {
-    if (!authed || !propertyId) return;
     const load = async () => {
-      setLoading(true);
       try {
-        const q = `?propertyId=${propertyId}`;
-        const [u, r, a, p, c, i, v, au] = await Promise.all([
+        const q = propertyId ? `?propertyId=${propertyId}` : "";
+        const [ov, u, r, a, p, c, i, v, au, adm] = await Promise.all([
+          api("/overview"),
           api(`/units${q}`),
           api(`/residents${q}`),
           api(`/access-points${q}`),
@@ -100,8 +129,10 @@ export default function AdminPanel() {
           api(`/access-controllers${q}`),
           api("/invitations"),
           api("/visits?limit=100"),
-          api("/audit?limit=100"),
+          role === "DEVELOPER" ? api("/audit?limit=100") : Promise.resolve([]),
+          role === "DEVELOPER" ? api("/admins") : Promise.resolve([]),
         ]);
+        setOverview(ov);
         setUnits(u);
         setResidents(r);
         setAccessPoints(a);
@@ -110,71 +141,73 @@ export default function AdminPanel() {
         setInvitations(i);
         setVisits(v);
         setAudit(au);
+        setAdmins(adm);
       } catch (e: any) {
-        setError(e.message);
-      } finally {
-        setLoading(false);
+        if (e.message === "UNAUTHORIZED") {
+          setAuthed(false);
+        } else {
+          setError(e.message);
+        }
       }
     };
     load();
-  }, [authed, propertyId, tab]);
+  }, [authed, propertyId, tab, role]);
 
-  async function login() {
-    setError(null);
-    const res = await fetch("/api/admin/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ secret }),
-    });
-    if (res.ok) {
-      setAuthed(true);
-      setSecret("");
-    } else {
-      setError("Clave incorrecta");
-    }
-  }
+  const refresh = async () => {
+    try {
+      await loadMe();
+      setPropertyId("");
+    } catch {}
+  };
 
-  if (authed === null) return <div className="p-8 text-zinc-400">Cargando…</div>;
+  if (loading) return <div className="p-8 text-zinc-400">Cargando…</div>;
 
-  if (authed === false) {
+  if (!authed) {
     return (
       <main className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
         <div className="w-full max-w-sm space-y-4">
           <h1 className="text-2xl font-bold text-center">Panel de administración</h1>
-          <p className="text-zinc-400 text-center text-sm">
-            Ingresá la clave de administración (ADMIN_SECRET).
-          </p>
+          <p className="text-zinc-400 text-center text-sm">Ingresá con tu email y contraseña.</p>
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email"
+            autoCapitalize="none"
+            className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
           <input
             type="password"
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && login()}
-            placeholder="Clave"
+            placeholder="Contraseña"
             className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           {error && <p className="text-red-400 text-sm">{error}</p>}
-          <button
-            onClick={login}
-            className="w-full py-3 rounded-xl bg-blue-600 font-semibold hover:bg-blue-500"
-          >
-            Entrar
+          <button onClick={login} className="w-full py-3 rounded-xl bg-blue-600 font-semibold hover:bg-blue-500">
+            Ingresar
           </button>
         </div>
       </main>
     );
   }
 
-  const tabs: { id: Tab; label: string }[] = [
+  const isDev = role === "DEVELOPER";
+
+  const allTabs: { id: Tab; label: string; dev?: boolean }[] = [
     { id: "overview", label: "Resumen" },
+    { id: "properties", label: "Edificios", dev: true },
     { id: "units", label: "Unidades" },
     { id: "residents", label: "Residentes" },
     { id: "access", label: "Accesos" },
     { id: "permissions", label: "Permisos" },
     { id: "controllers", label: "Controladores" },
     { id: "invitations", label: "Invitaciones" },
+    { id: "admins", label: "Administradores", dev: true },
     { id: "visits", label: "Visitas" },
-    { id: "audit", label: "Auditoría" },
+    { id: "audit", label: "Auditoría", dev: true },
   ];
+  const tabs = allTabs.filter((t) => !t.dev || isDev);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white p-6">
@@ -182,6 +215,9 @@ export default function AdminPanel() {
         <header className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Panel de administración</h1>
+            <p className="text-sm text-zinc-400">
+              Rol: <span className="text-blue-400">{role}</span>
+            </p>
             {properties.length > 0 && (
               <select
                 value={propertyId}
@@ -196,12 +232,7 @@ export default function AdminPanel() {
               </select>
             )}
           </div>
-          <button
-            onClick={() => {
-              fetch("/api/admin/logout", { method: "POST" }).then(() => setAuthed(false));
-            }}
-            className="text-sm text-zinc-400 hover:text-white"
-          >
+          <button onClick={logout} className="text-sm text-zinc-400 hover:text-white">
             Salir
           </button>
         </header>
@@ -221,7 +252,7 @@ export default function AdminPanel() {
         </nav>
 
         {toast && (
-          <div className="rounded-lg bg-emerald-600/20 border border-emerald-600/40 text-emerald-300 px-4 py-3">
+          <div className="rounded-lg bg-emerald-600/20 border border-emerald-600/40 text-emerald-300 px-4 py-3 whitespace-pre-wrap">
             {toast}
           </div>
         )}
@@ -253,88 +284,41 @@ export default function AdminPanel() {
                 ])}
               />
             </Section>
-            <Section title="Última actividad">
-              <Table
-                head={["Acción", "Entidad", "Fecha"]}
-                rows={(overview.recentAudit ?? []).map((a: any) => [
-                  a.action,
-                  a.entity_type,
-                  new Date(a.created_at).toLocaleString("es-AR"),
-                ])}
-              />
-            </Section>
+            {isDev && (
+              <Section title="Última actividad">
+                <Table
+                  head={["Acción", "Entidad", "Fecha"]}
+                  rows={(overview.recentAudit ?? []).map((a: any) => [
+                    a.action,
+                    a.entity_type,
+                    new Date(a.created_at).toLocaleString("es-AR"),
+                  ])}
+                />
+              </Section>
+            )}
           </div>
         )}
 
+        {tab === "properties" && isDev && <PropertiesTab onChanged={refresh} />}
         {tab === "units" && (
-          <UnitsTab
-            propertyId={propertyId}
-            units={units}
-            onChanged={() => {
-              refresh();
-              notify("Unidad actualizada");
-            }}
-          />
+          <UnitsTab propertyId={propertyId} units={units} onChanged={() => notify("Unidad actualizada")} />
         )}
-
         {tab === "residents" && (
-          <ResidentsTab
-            units={units}
-            residents={residents}
-            onChanged={() => {
-              refresh();
-              notify("Residente actualizado");
-            }}
-          />
+          <ResidentsTab units={units} residents={residents} onChanged={() => notify("Residente actualizado")} />
         )}
-
         {tab === "access" && (
-          <AccessTab
-            propertyId={propertyId}
-            accessPoints={accessPoints}
-            controllers={controllers}
-            onChanged={() => {
-              refresh();
-              notify("Acceso actualizado");
-            }}
-          />
+          <AccessTab propertyId={propertyId} accessPoints={accessPoints} controllers={controllers} onChanged={() => notify("Acceso actualizado")} />
         )}
-
         {tab === "permissions" && (
-          <PermissionsTab
-            units={units}
-            accessPoints={accessPoints}
-            permissions={permissions}
-            onChanged={() => {
-              refresh();
-              notify("Permiso actualizado");
-            }}
-          />
+          <PermissionsTab units={units} accessPoints={accessPoints} permissions={permissions} onChanged={() => notify("Permiso actualizado")} />
         )}
-
         {tab === "controllers" && (
-          <ControllersTab
-            propertyId={propertyId}
-            controllers={controllers}
-            onChanged={() => {
-              refresh();
-              notify("Controlador actualizado");
-            }}
-          />
+          <ControllersTab propertyId={propertyId} controllers={controllers} onChanged={() => notify("Controlador actualizado")} />
         )}
-
         {tab === "invitations" && (
-          <InvitationsTab
-            units={units}
-            residents={residents}
-            invitations={invitations}
-            onChanged={() => {
-              refresh();
-              notify("Invitación generada");
-            }}
-          />
+          <InvitationsTab units={units} residents={residents} invitations={invitations} onChanged={() => notify("Invitación generada")} />
         )}
-
+        {tab === "admins" && isDev && <AdminsTab admins={admins} properties={properties} onChanged={notify} />}
         {tab === "visits" && (
           <Section title="Visitas">
             <Table
@@ -350,17 +334,15 @@ export default function AdminPanel() {
             />
           </Section>
         )}
-
-        {tab === "audit" && (
+        {tab === "audit" && isDev && (
           <Section title="Auditoría">
             <Table
-              head={["Acción", "Actor", "Entidad", "Fecha", "Detalle"]}
+              head={["Acción", "Actor", "Entidad", "Fecha"]}
               rows={audit.map((a: any) => [
                 a.action,
                 a.actor_type ?? "-",
                 a.entity_type ?? "-",
                 new Date(a.created_at).toLocaleString("es-AR"),
-                a.metadata ? JSON.stringify(a.metadata) : "-",
               ])}
             />
           </Section>
@@ -417,31 +399,100 @@ function Table({ head, rows }: { head: string[]; rows: (string | React.ReactNode
   );
 }
 
-function UnitsTab({
-  propertyId,
-  units,
-  onChanged,
-}: {
-  propertyId: string;
-  units: any[];
-  onChanged: () => void;
-}) {
+function PropertiesTab({ onChanged }: { onChanged: () => void }) {
+  const [list, setList] = useState<any[]>([]);
+  const [form, setForm] = useState({ name: "", type: "BUILDING", address: "" });
+
+  useEffect(() => {
+    api("/properties").then(setList).catch(() => {});
+  }, []);
+
+  async function create() {
+    await api("/properties", { method: "POST", body: JSON.stringify(form) });
+    setForm({ name: "", type: "BUILDING", address: "" });
+    api("/properties").then(setList);
+    onChanged();
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <input className={inputCls} placeholder="Nombre del edificio/barrio" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <select className={inputCls} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+          <option value="BUILDING">Edificio</option>
+          <option value="CONDOMINIUM">Condominio</option>
+          <option value="GATED_COMMUNITY">Barrio privado</option>
+          <option value="HOUSE">Casa</option>
+          <option value="OFFICE">Oficina</option>
+          <option value="OTHER">Otro</option>
+        </select>
+        <input className={inputCls} placeholder="Dirección" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+        <button className={btnCls} onClick={create}>Agregar</button>
+      </div>
+      <Table
+        head={["Nombre", "Tipo", "Dirección", "Activo"]}
+        rows={list.map((p) => [p.name, p.type, p.address ?? "-", p.active ? "Sí" : "No"])}
+      />
+    </div>
+  );
+}
+
+function AdminsTab({ admins, properties, onChanged }: { admins: any[]; properties: { id: string; name: string }[]; onChanged: (m: string) => void }) {
+  const [email, setEmail] = useState("");
+  const [propertyId, setPropertyId] = useState("");
+
+  async function add() {
+    const res = await api("/admins", { method: "POST", body: JSON.stringify({ email, propertyId }) });
+    setEmail("");
+    setPropertyId("");
+    if (res.generatedPassword) {
+      onChanged(`Administrador creado.\nEmail: ${email}\nContraseña temporal: ${res.generatedPassword}\n(compártela con el administrador)`);
+    } else {
+      onChanged("Administrador asignado (ya tenía cuenta).");
+    }
+  }
+
+  async function remove(id: string) {
+    await api(`/admins/${id}`, { method: "DELETE" });
+    onChanged("Administrador removido.");
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <input className={inputCls} placeholder="Email del administrador" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <select className={inputCls} value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+          <option value="">Edificio…</option>
+          {properties.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+        <button className={btnCls} onClick={add}>Asignar</button>
+      </div>
+      <Table
+        head={["Email", "Edificio", ""]}
+        rows={admins.map((a) => [
+          a.profiles?.email ?? "-",
+          a.properties?.name ?? "-",
+          <button key={a.id} className="text-red-400" onClick={() => remove(a.id)}>Quitar</button>,
+        ])}
+      />
+    </div>
+  );
+}
+
+function UnitsTab({ propertyId, units, onChanged }: { propertyId: string; units: any[]; onChanged: () => void }) {
   const [form, setForm] = useState({ unit_number: "", display_name: "", building: "", floor: "" });
 
   async function create() {
-    await api("/units", {
-      method: "POST",
-      body: JSON.stringify({ property_id: propertyId, ...form }),
-    });
+    await api("/units", { method: "POST", body: JSON.stringify({ property_id: propertyId, ...form }) });
     setForm({ unit_number: "", display_name: "", building: "", floor: "" });
     onChanged();
   }
 
-  async function setBilling(id: string, status: string, amount: number) {
-    await api(`/units/${id}/billing`, {
-      method: "POST",
-      body: JSON.stringify({ billingStatus: status, debtAmount: amount }),
-    });
+  async function setBilling(id: string, status: string) {
+    const amount = Number((document.getElementById(`debt-${id}`) as HTMLInputElement)?.value ?? 0);
+    await api(`/units/${id}/billing`, { method: "POST", body: JSON.stringify({ billingStatus: status, debtAmount: amount }) });
     onChanged();
   }
 
@@ -453,7 +504,6 @@ function UnitsTab({
         <input className={inputCls} placeholder="Torre/edificio" value={form.building} onChange={(e) => setForm({ ...form, building: e.target.value })} />
         <button className={btnCls} onClick={create}>Agregar</button>
       </div>
-
       <div className="space-y-2">
         {units.map((u) => (
           <div key={u.id} className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
@@ -469,16 +519,10 @@ function UnitsTab({
               </span>
             </div>
             <div className="flex items-center gap-2 mt-3">
-              <input
-                type="number"
-                defaultValue={u.debt_amount}
-                id={`debt-${u.id}`}
-                placeholder="Deuda"
-                className={inputCls + " max-w-[140px]"}
-              />
-              <button className={btnCls + " bg-emerald-600"} onClick={() => setBilling(u.id, "OK", Number((document.getElementById(`debt-${u.id}`) as HTMLInputElement)?.value ?? 0))}>OK</button>
-              <button className={btnCls + " bg-amber-500"} onClick={() => setBilling(u.id, "WARNING", Number((document.getElementById(`debt-${u.id}`) as HTMLInputElement)?.value ?? 0))}>WARNING</button>
-              <button className={btnCls + " bg-red-600"} onClick={() => setBilling(u.id, "BLOCKED", Number((document.getElementById(`debt-${u.id}`) as HTMLInputElement)?.value ?? 0))}>BLOCKED</button>
+              <input type="number" defaultValue={u.debt_amount} id={`debt-${u.id}`} placeholder="Deuda" className={inputCls + " max-w-[140px]"} />
+              <button className={btnCls + " bg-emerald-600"} onClick={() => setBilling(u.id, "OK")}>OK</button>
+              <button className={btnCls + " bg-amber-500"} onClick={() => setBilling(u.id, "WARNING")}>WARNING</button>
+              <button className={btnCls + " bg-red-600"} onClick={() => setBilling(u.id, "BLOCKED")}>BLOCKED</button>
             </div>
           </div>
         ))}
@@ -487,15 +531,7 @@ function UnitsTab({
   );
 }
 
-function ResidentsTab({
-  units,
-  residents,
-  onChanged,
-}: {
-  units: any[];
-  residents: any[];
-  onChanged: () => void;
-}) {
+function ResidentsTab({ units, residents, onChanged }: { units: any[]; residents: any[]; onChanged: () => void }) {
   const [form, setForm] = useState({ first_name: "", last_name: "", unit_id: "" });
 
   async function create() {
@@ -517,7 +553,6 @@ function ResidentsTab({
         </select>
         <button className={btnCls} onClick={create}>Agregar</button>
       </div>
-
       <Table
         head={["Nombre", "Unidad", "Rol", "Activo"]}
         rows={residents.map((r) => [r.display_name ?? `${r.first_name} ${r.last_name ?? ""}`, r.units?.display_name ?? "-", r.role, r.active ? "Sí" : "No"])}
@@ -526,17 +561,7 @@ function ResidentsTab({
   );
 }
 
-function AccessTab({
-  propertyId,
-  accessPoints,
-  controllers,
-  onChanged,
-}: {
-  propertyId: string;
-  accessPoints: any[];
-  controllers: any[];
-  onChanged: () => void;
-}) {
+function AccessTab({ propertyId, accessPoints, controllers, onChanged }: { propertyId: string; accessPoints: any[]; controllers: any[]; onChanged: () => void }) {
   const [form, setForm] = useState({ name: "", type: "MAIN_ENTRANCE", access_controller_id: "" });
 
   async function create() {
@@ -569,7 +594,6 @@ function AccessTab({
         </select>
         <button className={btnCls} onClick={create}>Agregar</button>
       </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {accessPoints.map((a) => {
           const url = `${window.location.origin}/access/${a.qr_token}`;
@@ -598,17 +622,7 @@ function AccessTab({
   );
 }
 
-function PermissionsTab({
-  units,
-  accessPoints,
-  permissions,
-  onChanged,
-}: {
-  units: any[];
-  accessPoints: any[];
-  permissions: any[];
-  onChanged: () => void;
-}) {
+function PermissionsTab({ units, accessPoints, permissions, onChanged }: { units: any[]; accessPoints: any[]; permissions: any[]; onChanged: () => void }) {
   const [unitId, setUnitId] = useState("");
   const [accessPointId, setAccessPointId] = useState("");
 
@@ -636,36 +650,20 @@ function PermissionsTab({
         </select>
         <button className={btnCls} onClick={grant}>Conceder</button>
       </div>
-
       <Table
         head={["Unidad", "Acceso", "Concedido"]}
-        rows={permissions.map((p) => [
-          p.units?.display_name ?? "-",
-          p.access_points?.name ?? "-",
-          p.granted ? "Sí" : "No",
-        ])}
+        rows={permissions.map((p) => [p.units?.display_name ?? "-", p.access_points?.name ?? "-", p.granted ? "Sí" : "No"])}
       />
     </div>
   );
 }
 
-function ControllersTab({
-  propertyId,
-  controllers,
-  onChanged,
-}: {
-  propertyId: string;
-  controllers: any[];
-  onChanged: () => void;
-}) {
+function ControllersTab({ propertyId, controllers, onChanged }: { propertyId: string; controllers: any[]; onChanged: () => void }) {
   const [form, setForm] = useState({ name: "", type: "MOCK", url: "", secret: "" });
 
   async function create() {
     const config = form.type === "MOCK" ? null : { url: form.url, secret: form.secret || null };
-    await api("/access-controllers", {
-      method: "POST",
-      body: JSON.stringify({ property_id: propertyId, name: form.name, type: form.type, config }),
-    });
+    await api("/access-controllers", { method: "POST", body: JSON.stringify({ property_id: propertyId, name: form.name, type: form.type, config }) });
     setForm({ name: "", type: "MOCK", url: "", secret: "" });
     onChanged();
   }
@@ -687,26 +685,15 @@ function ControllersTab({
         )}
         <button className={btnCls} onClick={create}>Agregar</button>
       </div>
-
       <Table
-        head={["Nombre", "Tipo", "Estado", "Config"]}
-        rows={controllers.map((c) => [c.name, c.type, c.status, c.config ? JSON.stringify(c.config) : "-"])}
+        head={["Nombre", "Tipo", "Estado"]}
+        rows={controllers.map((c) => [c.name, c.type, c.status])}
       />
     </div>
   );
 }
 
-function InvitationsTab({
-  units,
-  residents,
-  invitations,
-  onChanged,
-}: {
-  units: any[];
-  residents: any[];
-  invitations: any[];
-  onChanged: () => void;
-}) {
+function InvitationsTab({ units, residents, invitations, onChanged }: { units: any[]; residents: any[]; invitations: any[]; onChanged: () => void }) {
   const [unitId, setUnitId] = useState("");
   const [residentId, setResidentId] = useState("");
 
@@ -734,7 +721,6 @@ function InvitationsTab({
         </select>
         <button className={btnCls} onClick={generate}>Generar invitación</button>
       </div>
-
       <Table
         head={["Código", "Unidad", "Residente", "Estado"]}
         rows={invitations.map((i) => [
@@ -748,7 +734,5 @@ function InvitationsTab({
   );
 }
 
-const inputCls =
-  "rounded-xl bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500";
-const btnCls =
-  "rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500";
+const inputCls = "rounded-xl bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500";
+const btnCls = "rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold hover:bg-blue-500";
