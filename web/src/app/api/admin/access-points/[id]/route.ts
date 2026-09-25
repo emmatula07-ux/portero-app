@@ -11,9 +11,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   if (!(await checkAp(g.admin, g.actor, id))) return err("No autorizado", 403);
   const body = await req.json().catch(() => ({}));
+  const patch: Record<string, unknown> = {};
+  if (body.name !== undefined) patch.name = body.name;
+  if (body.type !== undefined) patch.type = body.type;
+  if (body.active !== undefined) patch.active = body.active;
+  if (body.access_controller_id !== undefined) patch.access_controller_id = body.access_controller_id;
   const { data, error } = await g.admin
     .from("access_points")
-    .update({ name: body.name, type: body.type, active: body.active, access_controller_id: body.access_controller_id })
+    .update(patch)
     .eq("id", id)
     .select()
     .single();

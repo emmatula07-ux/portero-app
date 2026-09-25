@@ -15,7 +15,8 @@
           "color": "#2563eb",
           "defaultChannel": "default"
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "ios": {
       "supportsTablet": true,

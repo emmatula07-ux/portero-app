@@ -7,7 +7,10 @@ export async function GET(req: Request) {
   if (g.unauthorized) return err("No autorizado", 401);
   const { searchParams } = new URL(req.url);
   const propertyId = searchParams.get("propertyId");
-  let q = g.admin.from("access_points").select("*").order("name", { ascending: true });
+  let q = g.admin
+    .from("access_points")
+    .select("*, access_controllers(name, type, status)")
+    .order("name", { ascending: true });
   if (g.actor.role === "ADMIN") {
     q = g.actor.propertyIds.length ? q.in("property_id", g.actor.propertyIds) : q.in("id", [NONE]);
   }

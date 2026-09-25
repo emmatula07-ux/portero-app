@@ -593,6 +593,11 @@ function AccessTab({ propertyId, accessPoints, controllers, onChanged }: { prope
     onChanged();
   }
 
+  async function reassign(id: string, accessControllerId: string) {
+    await api(`/access-points/${id}`, { method: "PATCH", body: JSON.stringify({ access_controller_id: accessControllerId || null }) });
+    onChanged();
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
@@ -615,6 +620,7 @@ function AccessTab({ propertyId, accessPoints, controllers, onChanged }: { prope
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {accessPoints.map((a) => {
           const url = `${window.location.origin}/access/${a.qr_token}`;
+          const ctrl = a.access_controllers;
           return (
             <div key={a.id} className="rounded-xl bg-zinc-900 border border-zinc-800 p-4 space-y-2">
               <div className="flex items-center justify-between">
@@ -632,6 +638,24 @@ function AccessTab({ propertyId, accessPoints, controllers, onChanged }: { prope
                   <button className={btnCls + " bg-zinc-700"} onClick={() => rotate(a.id)}>Rotar QR</button>
                 </div>
               </div>
+              <div className="border-t border-zinc-800 pt-2">
+                <p className="text-xs text-zinc-400 mb-1">
+                  Controlador:{" "}
+                  <span className={ctrl ? "text-blue-400" : "text-amber-400"}>
+                    {ctrl ? `${ctrl.name} (${ctrl.type})` : "Sin controlador asignado"}
+                  </span>
+                </p>
+                <select
+                  className={inputCls + " w-full"}
+                  value={a.access_controller_id ?? ""}
+                  onChange={(e) => reassign(a.id, e.target.value)}
+                >
+                  <option value="">Sin controlador…</option>
+                  {controllers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.type})</option>
+                  ))}
+                </select>
+              </div>
             </div>
           );
         })}
@@ -648,6 +672,11 @@ function PermissionsTab({ units, accessPoints, permissions, onChanged }: { units
     await api("/permissions", { method: "POST", body: JSON.stringify({ unit_id: unitId, access_point_id: accessPointId, granted: true }) });
     setUnitId("");
     setAccessPointId("");
+    onChanged();
+  }
+
+  async function revoke(id: string) {
+    await api(`/permissions/${id}`, { method: "DELETE" });
     onChanged();
   }
 
@@ -669,8 +698,13 @@ function PermissionsTab({ units, accessPoints, permissions, onChanged }: { units
         <button className={btnCls} onClick={grant}>Conceder</button>
       </div>
       <Table
-        head={["Unidad", "Acceso", "Concedido"]}
-        rows={permissions.map((p) => [p.units?.display_name ?? "-", p.access_points?.name ?? "-", p.granted ? "Sí" : "No"])}
+        head={["Unidad", "Acceso", "Concedido", ""]}
+        rows={permissions.map((p) => [
+          p.units?.display_name ?? "-",
+          p.access_points?.name ?? "-",
+          p.granted ? "Sí" : "No",
+          <button key={p.id} className="text-red-400 hover:text-red-300" onClick={() => revoke(p.id)}>Revocar</button>,
+        ])}
       />
     </div>
   );

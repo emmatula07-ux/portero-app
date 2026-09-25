@@ -19,6 +19,40 @@ const STATUS_UI: Record<VisitStatus, { title: string; tone: string }> = {
   CANCELLED: { title: "La solicitud fue cancelada.", tone: "text-gray-500" },
 };
 
+interface RecentVisit {
+  visitId: string;
+  residentId: string;
+  displayName: string;
+  unitLabel: string;
+  visitorName: string;
+  visitorType: "VISITOR" | "DELIVERY";
+  status: VisitStatus;
+  ts: number;
+}
+
+const recentKey = (token: string) => `portero:recent:${token}`;
+
+function loadRecent(token: string): RecentVisit[] {
+  try {
+    return JSON.parse(localStorage.getItem(recentKey(token)) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveRecent(token: string, list: RecentVisit[]) {
+  localStorage.setItem(recentKey(token), JSON.stringify(list.slice(0, 10)));
+}
+
+function patchRecentStatus(token: string, visitId: string, status: VisitStatus) {
+  const list = loadRecent(token);
+  const i = list.findIndex((r) => r.visitId === visitId);
+  if (i >= 0) {
+    list[i].status = status;
+    saveRecent(token, list);
+  }
+}
+
 export default function VisitorFlow({ token }: { token: string }) {
   const [step, setStep] = useState<Step>("search");
   const [query, setQuery] = useState("");
@@ -31,13 +65,38 @@ export default function VisitorFlow({ token }: { token: string }) {
   const [visitorType, setVisitorType] = useState<"VISITOR" | "DELIVERY">("VISITOR");
   const [status, setStatus] = useState<VisitStatus>("PENDING");
   const [sending, setSending] = useState(false);
+  const [recent, setRecent] = useState<RecentVisit[]>([]);
+  const [closeHint, setCloseHint] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setRecent(loadRecent(token));
+  }, [token]);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
+
+  const finalized = step === "tracking" && status !== "PENDING";
+
+  const closeTab = useCallback(() => {
+    window.close();
+    setCloseHint(true);
+  }, []);
+
+  // Atrapar el botón "atrás" del navegador cuando la visita ya está resuelta.
+  useEffect(() => {
+    if (!finalized) return;
+    history.pushState({ finalized: true }, "");
+    const onPop = () => {
+      closeTab();
+      history.pushState({ finalized: true }, "");
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [finalized, closeTab]);
 
   const runSearch = useCallback(
     async (q: string) => {
@@ -64,6 +123,11 @@ export default function VisitorFlow({ token }: { token: string }) {
     return () => clearTimeout(t);
   }, [query, runSearch]);
 
+  const unitLabel = (r: ResidentResult) =>
+    [r.unit_display_name || r.unit_number, r.building, r.floor ? `Piso ${r.floor}` : null]
+      .filter(Boolean)
+      .join(" · ");
+
   const selectResident = (r: ResidentResult) => {
     setSelected(r);
     setStep("details");
@@ -83,20 +147,61 @@ export default function VisitorFlow({ token }: { token: string }) {
       });
       setStatus(res.status);
       setStep("tracking");
-      poll(res.trackingToken);
+
+      const entry: RecentVisit = {
+        visitId: res.visitId,
+        residentId: selected.id,
+        displayName: selected.display_name,
+        unitLabel: unitLabel(selected),
+        visitorName: visitorName.trim(),
+        visitorType,
+        status: res.status,
+        ts: Date.now(),
+      };
+      saveRecent(token, [entry, ...loadRecent(token)]);
+      setRecent(loadRecent(token));
+
+      poll(res.trackingToken, res.visitId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo enviar");
       setSending(false);
     }
   };
 
-  const poll = (trackingToken: string) => {
+  const repeat = async (r: RecentVisit) => {
+    setSending(true);
+    setError(null);
+    try {
+      const res = await createVisit({
+        token,
+        residentId: r.residentId,
+        visitorName: r.visitorName || undefined,
+        visitorType: r.visitorType,
+      });
+      setStatus(res.status);
+      setStep("tracking");
+
+      const entry: RecentVisit = { ...r, visitId: res.visitId, status: res.status, ts: Date.now() };
+      saveRecent(token, [entry, ...loadRecent(token)]);
+      setRecent(loadRecent(token));
+
+      poll(res.trackingToken, res.visitId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo enviar");
+      setSending(false);
+    }
+  };
+
+  const poll = (trackingToken: string, visitId: string) => {
     const tick = async () => {
       try {
         const s = await getVisitStatus(trackingToken);
         setStatus(s.status);
         if (s.status === "PENDING") {
           timerRef.current = setTimeout(tick, 2000);
+        } else {
+          patchRecentStatus(token, visitId, s.status);
+          setRecent(loadRecent(token));
         }
       } catch {
         timerRef.current = setTimeout(tick, 3000);
@@ -113,11 +218,6 @@ export default function VisitorFlow({ token }: { token: string }) {
     setVisitorMessage("");
   };
 
-  const unitLabel = (r: ResidentResult) =>
-    [r.unit_display_name || r.unit_number, r.building, r.floor ? `Piso ${r.floor}` : null]
-      .filter(Boolean)
-      .join(" · ");
-
   if (step === "tracking") {
     const ui = STATUS_UI[status];
     return (
@@ -128,13 +228,18 @@ export default function VisitorFlow({ token }: { token: string }) {
           </div>
           <h1 className={`text-2xl font-bold ${ui.tone}`}>{ui.title}</h1>
           {status === "PENDING" && <p className="text-zinc-400">No cierres esta pantalla.</p>}
-          {status !== "PENDING" && (
-            <button
-              onClick={back}
-              className="mt-4 px-6 py-3 rounded-xl bg-white text-black font-semibold hover:bg-zinc-200"
-            >
-              Volver
-            </button>
+          {finalized && (
+            <>
+              <button
+                onClick={closeTab}
+                className="mt-4 px-6 py-3 rounded-xl bg-white text-black font-semibold hover:bg-zinc-200"
+              >
+                Cerrar pestaña
+              </button>
+              {closeHint && (
+                <p className="text-zinc-500 text-sm">Si no se cerró, ya podés cerrar esta pestaña manualmente.</p>
+              )}
+            </>
           )}
         </div>
       </main>
@@ -186,6 +291,35 @@ export default function VisitorFlow({ token }: { token: string }) {
                 </button>
               ))}
             </div>
+
+            {recent.length > 0 && (
+              <div className="pt-2">
+                <h2 className="text-sm font-semibold text-zinc-400 mb-2">Tus visitas recientes</h2>
+                <div className="space-y-2">
+                  {recent.map((r, i) => (
+                    <div
+                      key={`${r.visitId}-${i}`}
+                      className="rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-3 flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate">{r.displayName}</p>
+                        <p className="text-xs text-zinc-500 truncate">{r.unitLabel}</p>
+                        <p className={`text-xs mt-0.5 ${STATUS_UI[r.status]?.tone ?? "text-zinc-400"}`}>
+                          {STATUS_UI[r.status]?.title ?? r.status}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => repeat(r)}
+                        disabled={sending}
+                        className="shrink-0 px-3 py-2 rounded-lg bg-blue-600 text-sm font-semibold hover:bg-blue-500 disabled:opacity-50"
+                      >
+                        Repetir
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

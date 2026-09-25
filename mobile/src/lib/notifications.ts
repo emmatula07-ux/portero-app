@@ -30,6 +30,14 @@ export async function ensureNotificationChannels() {
   });
 }
 
+export function onVisitNotification(callback: () => void) {
+  const sub = Notifications.addNotificationReceivedListener((notification) => {
+    const data = notification.request.content.data as { type?: string } | undefined;
+    if (data?.type === "visit_request") callback();
+  });
+  return sub;
+}
+
 const IS_EXPO_GO = Constants.appOwnership === "expo";
 
 export async function registerPushToken(userId: string) {
