@@ -23,6 +23,7 @@
     },
     "android": {
       "package": "com.portero.app",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#2563eb",
         "foregroundImage": "./assets/android-icon-foreground.png",

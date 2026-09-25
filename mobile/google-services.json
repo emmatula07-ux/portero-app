@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "662662386553",
+    "project_id": "porteroapp-9975f",
+    "storage_bucket": "porteroapp-9975f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:662662386553:android:c68b3dd1d8e3ca133dd5a8",
+        "android_client_info": {
+          "package_name": "com.portero.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB9yEGq4GiZ2qD2HsjS3chbPXRGNVeTY94"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
