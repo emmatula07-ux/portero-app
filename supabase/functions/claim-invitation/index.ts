@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
 
     const { data: invitation } = await admin
       .from("invitations")
-      .select("id, unit_id, resident_id, status, expires_at")
+      .select("id, unit_id, resident_id, status, expires_at, email")
       .eq("token", token)
       .maybeSingle();
 
@@ -36,6 +36,12 @@ Deno.serve(async (req) => {
       .select("id, full_name, email")
       .eq("id", user.id)
       .maybeSingle();
+
+    const userEmail = (profile?.email ?? user.email ?? "").trim().toLowerCase();
+    const inviteEmail = (invitation.email ?? "").trim().toLowerCase();
+    if (inviteEmail && userEmail !== inviteEmail) {
+      return error("Esta invitación está destinada a otro correo.", 403, "INVITATION_EMAIL_MISMATCH");
+    }
 
     const fullName = (profile?.full_name ?? "").trim();
     const emailLocal = (profile?.email ?? user.email ?? "").split("@")[0].trim();

@@ -16,7 +16,12 @@
           "defaultChannel": "default"
         }
       ],
-      "expo-audio"
+      [
+        "expo-audio",
+        {
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": true,
