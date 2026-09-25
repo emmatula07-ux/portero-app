@@ -47,13 +47,19 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 
 El script pide los 3 valores del Paso 1 (Project URL, anon key y service role key) y escribe los archivos de configuración automáticamente.
 
-### Paso 3 — Crear la base de datos (2 copiar-pegar)
+### Paso 3 — Crear la base de datos
 
-En **https://supabase.com/dashboard** → tu proyecto → **SQL Editor** → **New query**:
+Si ya tenés `supabase login` hecho (Paso 4), podés aplicar todas las migraciones automáticamente:
 
-1. Abrí el archivo `supabase/migrations/0001_init.sql`, copiá **todo** y pegalo. Presioná **Run**.
-2. Hacé lo mismo con `supabase/migrations/0002_search_privacy.sql` (privacidad de nombres en la búsqueda).
-3. Por último `supabase/seed.sql`.
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\apply-migration.ps1 -SqlFile supabase\migrations\0001_init.sql
+powershell -ExecutionPolicy Bypass -File scripts\apply-migration.ps1 -SqlFile supabase\migrations\0002_search_privacy.sql
+powershell -ExecutionPolicy Bypass -File scripts\apply-migration.ps1 -SqlFile supabase\migrations\0003_rbac.sql
+powershell -ExecutionPolicy Bypass -File scripts\apply-migration.ps1 -SqlFile supabase\migrations\0004_invitation_claimed_by.sql
+powershell -ExecutionPolicy Bypass -File scripts\apply-migration.ps1 -SqlFile supabase\seed.sql
+```
+
+O, manualmente, en **https://supabase.com/dashboard** → tu proyecto → **SQL Editor** → **New query**, pegá y ejecutá **en orden**: `0001_init.sql`, `0002_search_privacy.sql`, `0003_rbac.sql`, `0004_invitation_claimed_by.sql` y `seed.sql`.
 
 ### Paso 4 — Desplegar las funciones y arrancar
 
@@ -104,11 +110,12 @@ En el panel podés:
 3. Ingresá el **código de invitación** `DEV_INVITE_4B` (viene en el seed).
 4. Quedás asociado a la unidad 4B. Enviá una visita desde el navegador y la verás en la app: podés **Aceptar** y **Abrir puerta**.
 
-> **Push en un teléfono real:** en Android funciona dentro de Expo Go. En iOS (y para producción) se necesita un build de desarrollo. Para generar el `projectId` de Expo una sola vez:
+> **Push en un teléfono real:** desde Expo SDK 53, `expo-notifications` **no recibe push en Expo Go**. Para recibir notificaciones de visita necesitás un **development build** (o un build EAS) instalado en el teléfono:
 > ```powershell
 > cd mobile
-> npx eas init
+> npx expo run:android        # build de desarrollo en Android (o npx eas build)
 > ```
+> Requisitos: `projectId` de EAS ya configurado en `app.json` (`extra.eas.projectId`), y credenciales de push (Android: FCM V1 vía EAS; iOS: cuenta de desarrollador). En Android se necesita un dispositivo físico o un emulador con Google Play.
 
 ---
 
@@ -165,11 +172,13 @@ Si querés que **todo** (base de datos, auth y funciones) corra en tu PC sin usa
 supabase/
   migrations/0001_init.sql      # schema + seguridad (RLS)
   migrations/0002_search_privacy.sql  # búsqueda con nombres ofuscados
+  migrations/0003_rbac.sql      # roles DEVELOPER/ADMIN/RESIDENT
+  migrations/0004_invitation_claimed_by.sql  # quién reclamó cada invitación
   seed.sql                      # datos de ejemplo
   functions/                    # Edge Functions (search-residents, create-visit, visit-status, open-access, claim-invitation)
 web/                            # web visitante + panel admin (Next.js)
 mobile/                         # app propietario (Expo)
-scripts/                        # setup.ps1, deploy.ps1, run.ps1
+scripts/                        # setup.ps1, deploy.ps1, apply-migration.ps1, run.ps1
 ```
 
 ## Problemas frecuentes

@@ -139,10 +139,16 @@ export default function HomeScreen({ session }: { session: Session }) {
 
   const name = resident?.display_name || resident?.first_name || "Residente";
 
+  async function onRefresh() {
+    setRefreshing(true);
+    await Promise.all([load(), registerPushToken(session.user.id)]);
+    setRefreshing(false);
+  }
+
   return (
     <ScrollView
       style={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load()} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       <View style={styles.header}>
         <View>

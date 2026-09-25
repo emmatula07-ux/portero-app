@@ -33,9 +33,16 @@ Deno.serve(async (req) => {
 
     const { data: profile } = await admin
       .from("profiles")
-      .select("id, full_name")
+      .select("id, full_name, email")
       .eq("id", user.id)
       .maybeSingle();
+
+    const fullName = (profile?.full_name ?? "").trim();
+    const emailLocal = (profile?.email ?? user.email ?? "").split("@")[0].trim();
+    const fallback = fullName || emailLocal || "Residente";
+    const parts = fallback.split(" ").filter(Boolean);
+    const firstName = parts[0] || "Residente";
+    const lastName = parts.slice(1).join(" ") || null;
 
     let residentId = invitation.resident_id;
 
@@ -47,9 +54,9 @@ Deno.serve(async (req) => {
         .insert({
           unit_id: invitation.unit_id,
           profile_id: user.id,
-          first_name: profile?.full_name?.split(" ")[0] ?? "Residente",
-          last_name: profile?.full_name?.split(" ").slice(1).join(" ") ?? null,
-          display_name: profile?.full_name ?? "Residente",
+          first_name: firstName,
+          last_name: lastName,
+          display_name: fullName || fallback,
           role: "TENANT",
           active: true,
         })
@@ -58,7 +65,11 @@ Deno.serve(async (req) => {
       residentId = created?.id;
     }
 
-    await admin.from("invitations").update({ status: "CLAIMED" }).eq("id", invitation.id);
+    await admin.from("invitations").update({
+      status: "CLAIMED",
+      claimed_by_profile_id: user.id,
+      claimed_at: new Date().toISOString(),
+    }).eq("id", invitation.id);
 
     await admin.from("audit_logs").insert({
       actor_type: "user",

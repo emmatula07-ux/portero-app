@@ -1,4 +1,4 @@
-# Build del APK (Android) local, con el toolchain de esta máquina.
+﻿# Build del APK (Android) local, con el toolchain de esta máquina.
 # Uso:
 #   powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1          -> release (recomendado)
 #   powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1 -Debug   -> debug

@@ -115,6 +115,8 @@ export default function AdminPanel() {
     setPropertyId("");
   }
 
+  const [dataVersion, setDataVersion] = useState(0);
+
   useEffect(() => {
     if (!authed) return;
     const load = async () => {
@@ -151,12 +153,17 @@ export default function AdminPanel() {
       }
     };
     load();
-  }, [authed, propertyId, tab, role]);
+  }, [authed, propertyId, role, dataVersion]);
 
-  const refresh = async () => {
+  const handleChanged = (msg?: string) => {
+    if (msg) notify(msg);
+    setDataVersion((v) => v + 1);
+  };
+
+  const refreshProperties = async () => {
     try {
       await loadMe();
-      setPropertyId("");
+      setDataVersion((v) => v + 1);
     } catch {}
   };
 
@@ -299,26 +306,26 @@ export default function AdminPanel() {
           </div>
         )}
 
-        {tab === "properties" && isDev && <PropertiesTab onChanged={refresh} />}
+        {tab === "properties" && isDev && <PropertiesTab onChanged={refreshProperties} />}
         {tab === "units" && (
-          <UnitsTab propertyId={propertyId} units={units} onChanged={() => notify("Unidad actualizada")} />
+          <UnitsTab propertyId={propertyId} units={units} onChanged={() => handleChanged("Unidad actualizada")} />
         )}
         {tab === "residents" && (
-          <ResidentsTab units={units} residents={residents} onChanged={() => notify("Residente actualizado")} />
+          <ResidentsTab units={units} residents={residents} onChanged={(msg) => handleChanged(msg ?? "Residente actualizado")} />
         )}
         {tab === "access" && (
-          <AccessTab propertyId={propertyId} accessPoints={accessPoints} controllers={controllers} onChanged={() => notify("Acceso actualizado")} />
+          <AccessTab propertyId={propertyId} accessPoints={accessPoints} controllers={controllers} onChanged={() => handleChanged("Acceso actualizado")} />
         )}
         {tab === "permissions" && (
-          <PermissionsTab units={units} accessPoints={accessPoints} permissions={permissions} onChanged={() => notify("Permiso actualizado")} />
+          <PermissionsTab units={units} accessPoints={accessPoints} permissions={permissions} onChanged={() => handleChanged("Permiso actualizado")} />
         )}
         {tab === "controllers" && (
-          <ControllersTab propertyId={propertyId} controllers={controllers} onChanged={() => notify("Controlador actualizado")} />
+          <ControllersTab propertyId={propertyId} controllers={controllers} onChanged={() => handleChanged("Controlador actualizado")} />
         )}
         {tab === "invitations" && (
-          <InvitationsTab units={units} residents={residents} invitations={invitations} onChanged={() => notify("Invitación generada")} />
+          <InvitationsTab units={units} residents={residents} invitations={invitations} onChanged={() => handleChanged("Invitación generada")} />
         )}
-        {tab === "admins" && isDev && <AdminsTab admins={admins} properties={properties} onChanged={notify} />}
+        {tab === "admins" && isDev && <AdminsTab admins={admins} properties={properties} onChanged={handleChanged} />}
         {tab === "visits" && (
           <Section title="Visitas">
             <Table
@@ -531,13 +538,18 @@ function UnitsTab({ propertyId, units, onChanged }: { propertyId: string; units:
   );
 }
 
-function ResidentsTab({ units, residents, onChanged }: { units: any[]; residents: any[]; onChanged: () => void }) {
+function ResidentsTab({ units, residents, onChanged }: { units: any[]; residents: any[]; onChanged: (msg?: string) => void }) {
   const [form, setForm] = useState({ first_name: "", last_name: "", unit_id: "" });
 
   async function create() {
     await api("/residents", { method: "POST", body: JSON.stringify(form) });
     setForm({ first_name: "", last_name: "", unit_id: "" });
-    onChanged();
+    onChanged("Residente agregado");
+  }
+
+  async function generateInvite(r: any) {
+    const res = await api("/invitations", { method: "POST", body: JSON.stringify({ unit_id: r.unit_id, resident_id: r.id }) });
+    onChanged(`Invitación generada para ${r.display_name ?? r.first_name}: ${res.token}`);
   }
 
   return (
@@ -554,8 +566,14 @@ function ResidentsTab({ units, residents, onChanged }: { units: any[]; residents
         <button className={btnCls} onClick={create}>Agregar</button>
       </div>
       <Table
-        head={["Nombre", "Unidad", "Rol", "Activo"]}
-        rows={residents.map((r) => [r.display_name ?? `${r.first_name} ${r.last_name ?? ""}`, r.units?.display_name ?? "-", r.role, r.active ? "Sí" : "No"])}
+        head={["Nombre", "Unidad", "Rol", "Activo", ""]}
+        rows={residents.map((r) => [
+          r.display_name ?? `${r.first_name} ${r.last_name ?? ""}`,
+          r.units?.display_name ?? "-",
+          r.role,
+          r.active ? "Sí" : "No",
+          <button key={r.id} className={btnCls + " bg-emerald-600"} onClick={() => generateInvite(r)}>Invitar</button>,
+        ])}
       />
     </div>
   );
@@ -722,12 +740,15 @@ function InvitationsTab({ units, residents, invitations, onChanged }: { units: a
         <button className={btnCls} onClick={generate}>Generar invitación</button>
       </div>
       <Table
-        head={["Código", "Unidad", "Residente", "Estado"]}
+        head={["Código", "Unidad", "Residente", "Estado", "Reclamada por"]}
         rows={invitations.map((i) => [
           <code key={i.id} className="bg-zinc-800 px-2 py-1 rounded">{i.token}</code>,
           i.units?.display_name ?? "-",
           i.residents?.display_name ?? "-",
           i.status,
+          i.claimed_by
+            ? `${i.claimed_by.email ?? i.claimed_by.full_name ?? "Usuario"}${i.claimed_at ? ` · ${new Date(i.claimed_at).toLocaleString("es-AR")}` : ""}`
+            : "-",
         ])}
       />
     </div>

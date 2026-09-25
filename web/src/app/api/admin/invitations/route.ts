@@ -14,7 +14,28 @@ export async function GET(req: Request) {
     q = unitIds && unitIds.length ? q.in("unit_id", unitIds) : q.in("id", [NONE]);
   }
   const { data } = await q;
-  return json(data ?? []);
+  const invitations = data ?? [];
+
+  const claimedIds = [
+    ...new Set(invitations.map((i) => i.claimed_by_profile_id).filter(Boolean)),
+  ] as string[];
+  let profilesById: Record<string, { email?: string; full_name?: string }> = {};
+  if (claimedIds.length) {
+    const { data: profiles } = await g.admin
+      .from("profiles")
+      .select("id, email, full_name")
+      .in("id", claimedIds);
+    profilesById = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]));
+  }
+
+  return json(
+    invitations.map((i) => ({
+      ...i,
+      claimed_by: i.claimed_by_profile_id
+        ? profilesById[i.claimed_by_profile_id] ?? null
+        : null,
+    })),
+  );
 }
 
 export async function POST(req: Request) {
