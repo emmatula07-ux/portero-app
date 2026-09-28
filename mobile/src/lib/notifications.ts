@@ -19,8 +19,8 @@ export async function ensureNotificationChannels() {
   await Notifications.setNotificationChannelAsync("visits", {
     name: "Visitas",
     importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-    sound: "default",
+    vibrationPattern: [0, 500, 250, 500, 250, 500],
+    sound: "alarm.wav",
     enableVibrate: true,
   });
   await Notifications.setNotificationChannelAsync("billing", {
@@ -36,6 +36,39 @@ export function onVisitNotification(callback: () => void) {
     if (data?.type === "visit_request") callback();
   });
   return sub;
+}
+
+let alarmNotificationId: string | null = null;
+
+export async function startVisitAlarm(title: string, body: string) {
+  if (alarmNotificationId) return;
+  try {
+    alarmNotificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        sound: "alarm.wav",
+        data: { type: "visit_alarm" },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 8,
+        repeats: true,
+      },
+    });
+  } catch (e) {
+    console.warn("No se pudo iniciar la alarma de visita:", e);
+  }
+}
+
+export async function stopVisitAlarm() {
+  if (!alarmNotificationId) return;
+  try {
+    await Notifications.cancelScheduledNotificationAsync(alarmNotificationId);
+  } catch (e) {
+    console.warn("No se pudo cancelar la alarma de visita:", e);
+  }
+  alarmNotificationId = null;
 }
 
 const IS_EXPO_GO = Constants.appOwnership === "expo";

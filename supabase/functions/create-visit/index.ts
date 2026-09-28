@@ -30,6 +30,13 @@ Deno.serve(async (req) => {
 
     if (!accessPoint) return error("Este acceso no está disponible.", 404, "ACCESS_NOT_FOUND");
 
+    const { data: property } = await admin
+      .from("properties")
+      .select("door_control_enabled")
+      .eq("id", accessPoint.property_id)
+      .maybeSingle();
+    const doorControl = property?.door_control_enabled ?? true;
+
     const ip = clientIp(req);
     const { data: allowed } = await admin.rpc("take_rate_limit", {
       p_key: `visit:${token}:${ip}`,
@@ -85,7 +92,7 @@ Deno.serve(async (req) => {
       body: visitorName
         ? `${visitorName} está en ${accessPoint.name}. Viene a visitar a ${display}.`
         : `Alguien está en ${accessPoint.name}. Viene a visitar a ${display}.`,
-      sound: "default",
+      sound: "alarm.wav",
       priority: "high",
       channelId: "visits",
       data: { type: "visit_request", visitId: visit.id, unitId: unit.id },
@@ -117,6 +124,7 @@ Deno.serve(async (req) => {
       status: "PENDING",
       expiresAt: visit.expires_at,
       notifiedDevices: targets.length,
+      doorControl,
     });
   } catch (e) {
     return error(e instanceof Error ? e.message : "Error interno", 500);

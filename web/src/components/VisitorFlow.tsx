@@ -64,6 +64,7 @@ export default function VisitorFlow({ token }: { token: string }) {
   const [visitorMessage, setVisitorMessage] = useState("");
   const [visitorType, setVisitorType] = useState<"VISITOR" | "DELIVERY">("VISITOR");
   const [status, setStatus] = useState<VisitStatus>("PENDING");
+  const [doorControl, setDoorControl] = useState(true);
   const [sending, setSending] = useState(false);
   const [recent, setRecent] = useState<RecentVisit[]>([]);
   const [closeHint, setCloseHint] = useState(false);
@@ -146,6 +147,7 @@ export default function VisitorFlow({ token }: { token: string }) {
         visitorType,
       });
       setStatus(res.status);
+      setDoorControl(res.doorControl ?? true);
       setStep("tracking");
 
       const entry: RecentVisit = {
@@ -179,6 +181,7 @@ export default function VisitorFlow({ token }: { token: string }) {
         visitorType: r.visitorType,
       });
       setStatus(res.status);
+      setDoorControl(res.doorControl ?? true);
       setStep("tracking");
 
       const entry: RecentVisit = { ...r, visitId: res.visitId, status: res.status, ts: Date.now() };
@@ -197,6 +200,7 @@ export default function VisitorFlow({ token }: { token: string }) {
       try {
         const s = await getVisitStatus(trackingToken);
         setStatus(s.status);
+        setDoorControl(s.doorControl ?? true);
         if (s.status === "PENDING") {
           timerRef.current = setTimeout(tick, 2000);
         } else {
@@ -220,13 +224,19 @@ export default function VisitorFlow({ token }: { token: string }) {
 
   if (step === "tracking") {
     const ui = STATUS_UI[status];
+    const acceptedNoControl = status === "ACCEPTED" && !doorControl;
     return (
       <main className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
         <div className="w-full max-w-md text-center space-y-6">
           <div className="text-6xl">
             {status === "PENDING" ? "⏳" : status === "ACCEPTED" ? "✅" : status === "REJECTED" ? "❌" : "⏰"}
           </div>
-          <h1 className={`text-2xl font-bold ${ui.tone}`}>{ui.title}</h1>
+          <h1 className={`text-2xl font-bold ${ui.tone}`}>
+            {acceptedNoControl ? "Tu visita fue aceptada. Pronto te van a atender y abrir." : ui.title}
+          </h1>
+          {acceptedNoControl && (
+            <p className="text-zinc-400">Quedate en la entrada, alguien va a abrirte.</p>
+          )}
           {status === "PENDING" && <p className="text-zinc-400">No cierres esta pantalla.</p>}
           {finalized && (
             <>

@@ -48,21 +48,23 @@ export async function createVisit(input: {
   visitorName?: string;
   visitorMessage?: string;
   visitorType?: "VISITOR" | "DELIVERY";
-}): Promise<{ visitId: string; trackingToken: string; status: VisitStatus; expiresAt: string }> {
+}): Promise<{ visitId: string; trackingToken: string; status: VisitStatus; expiresAt: string; doorControl: boolean }> {
   return (await post("create-visit", input)) as {
     visitId: string;
     trackingToken: string;
     status: VisitStatus;
     expiresAt: string;
+    doorControl: boolean;
   };
 }
 
 export async function getVisitStatus(
   trackingToken: string,
-): Promise<{ visitId: string; status: VisitStatus; expiresAt: string }> {
+): Promise<{ visitId: string; status: VisitStatus; expiresAt: string; doorControl: boolean }> {
   return (await post("visit-status", { trackingToken })) as {
     visitId: string;
     status: VisitStatus;
     expiresAt: string;
+    doorControl: boolean;
   };
 }

@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
-import { registerPushToken, onVisitNotification } from "../lib/notifications";
+import { registerPushToken, onVisitNotification, startVisitAlarm, stopVisitAlarm } from "../lib/notifications";
 import { playSuccessSound, playErrorSound } from "../lib/sounds";
 import { openAccess } from "../lib/api";
 
@@ -67,6 +67,7 @@ export default function HomeScreen({ session }: { session: Session }) {
   const [refreshing, setRefreshing] = useState(false);
   const [opening, setOpening] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
+  const [doorControl, setDoorControl] = useState(true);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = useCallback((t: Toast) => {
@@ -78,6 +79,7 @@ export default function HomeScreen({ session }: { session: Session }) {
   useEffect(() => {
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current);
+      stopVisitAlarm();
     };
   }, []);
 
@@ -96,10 +98,18 @@ export default function HomeScreen({ session }: { session: Session }) {
 
     const { data: unitData } = await supabase
       .from("units")
-      .select("id, display_name, unit_number, billing_status, debt_amount")
+      .select("id, display_name, unit_number, billing_status, debt_amount, property_id")
       .eq("id", res.unit_id)
       .single();
-    if (unitData) setUnit(unitData);
+    if (unitData) {
+      setUnit(unitData);
+      const { data: prop } = await supabase
+        .from("properties")
+        .select("door_control_enabled")
+        .eq("id", unitData.property_id)
+        .maybeSingle();
+      setDoorControl(prop?.door_control_enabled ?? true);
+    }
 
     const { data: visitsData } = await supabase
       .from("visit_requests")
@@ -107,7 +117,20 @@ export default function HomeScreen({ session }: { session: Session }) {
       .eq("unit_id", res.unit_id)
       .order("created_at", { ascending: false })
       .limit(30);
-    setVisits((visitsData as unknown as Visit[]) ?? []);
+    const loaded = (visitsData as unknown as Visit[]) ?? [];
+    setVisits(loaded);
+
+    const pending = loaded.find((v) => v.status === "PENDING");
+    if (pending) {
+      startVisitAlarm(
+        "🔔 Visita en curso",
+        pending.visitor_name
+          ? `${pending.visitor_name} está esperando en ${pending.access_points?.name ?? "la entrada"}.`
+          : "Tenés una visita esperando en la entrada.",
+      );
+    } else {
+      stopVisitAlarm();
+    }
 
     const { data: perms } = await supabase
       .from("access_permissions")
@@ -264,7 +287,7 @@ export default function HomeScreen({ session }: { session: Session }) {
                   </TouchableOpacity>
                 </View>
               )}
-              {v.id === openableId && (
+              {v.id === openableId && doorControl && (
                 <TouchableOpacity
                   style={[styles.btn, styles.btnOpen, { marginTop: 12 }]}
                   onPress={() => open(undefined, v.id)}
@@ -277,22 +300,26 @@ export default function HomeScreen({ session }: { session: Session }) {
           );
         })}
 
-        <Text style={styles.sectionTitle}>Accesos</Text>
-        {accesses.length === 0 && <Text style={styles.empty}>Sin accesos habilitados.</Text>}
-        {accesses.map((a) => (
-          <View key={a.id} style={styles.card}>
-            <View style={styles.cardRow}>
-              <Text style={styles.cardTitle}>{a.name}</Text>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnOpen]}
-                onPress={() => open(a.id)}
-                disabled={opening}
-              >
-                <Text style={styles.btnText}>Abrir</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
+        {doorControl && (
+          <>
+            <Text style={styles.sectionTitle}>Accesos</Text>
+            {accesses.length === 0 && <Text style={styles.empty}>Sin accesos habilitados.</Text>}
+            {accesses.map((a) => (
+              <View key={a.id} style={styles.card}>
+                <View style={styles.cardRow}>
+                  <Text style={styles.cardTitle}>{a.name}</Text>
+                  <TouchableOpacity
+                    style={[styles.btn, styles.btnOpen]}
+                    onPress={() => open(a.id)}
+                    disabled={opening}
+                  >
+                    <Text style={styles.btnText}>Abrir</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </>
+        )}
       </ScrollView>
 
       {toast && (

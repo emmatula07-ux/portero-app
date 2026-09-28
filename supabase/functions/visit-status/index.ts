@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
 
     const { data: visit } = await admin
       .from("visit_requests")
-      .select("id, status, expires_at")
+      .select("id, status, expires_at, access_point_id")
       .eq("tracking_token", trackingToken)
       .maybeSingle();
 
@@ -26,7 +26,24 @@ Deno.serve(async (req) => {
       status = "EXPIRED";
     }
 
-    return json({ visitId: visit.id, status, expiresAt: visit.expires_at });
+    let doorControl = true;
+    if (visit.access_point_id) {
+      const { data: ap } = await admin
+        .from("access_points")
+        .select("property_id")
+        .eq("id", visit.access_point_id)
+        .maybeSingle();
+      if (ap) {
+        const { data: property } = await admin
+          .from("properties")
+          .select("door_control_enabled")
+          .eq("id", ap.property_id)
+          .maybeSingle();
+        doorControl = property?.door_control_enabled ?? true;
+      }
+    }
+
+    return json({ visitId: visit.id, status, expiresAt: visit.expires_at, doorControl });
   } catch (e) {
     return error(e instanceof Error ? e.message : "Error interno", 500);
   }

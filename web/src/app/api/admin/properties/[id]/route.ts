@@ -6,9 +6,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   if (!canAccessProperty(g.actor, id)) return err("No autorizado sobre este edificio", 403);
   const body = await req.json().catch(() => ({}));
+  const patch: Record<string, unknown> = {};
+  if (body.name !== undefined) patch.name = body.name;
+  if (body.type !== undefined) patch.type = body.type;
+  if (body.address !== undefined) patch.address = body.address;
+  if (body.timezone !== undefined) patch.timezone = body.timezone;
+  if (body.active !== undefined) patch.active = body.active;
+  if (body.door_control_enabled !== undefined) patch.door_control_enabled = body.door_control_enabled;
   const { data, error } = await g.admin
     .from("properties")
-    .update({ name: body.name, type: body.type, address: body.address, timezone: body.timezone, active: body.active })
+    .update(patch)
     .eq("id", id)
     .select()
     .single();

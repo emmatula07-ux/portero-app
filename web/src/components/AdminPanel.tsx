@@ -421,6 +421,12 @@ function PropertiesTab({ onChanged }: { onChanged: () => void }) {
     onChanged();
   }
 
+  async function toggleDoor(p: any) {
+    await api(`/properties/${p.id}`, { method: "PATCH", body: JSON.stringify({ door_control_enabled: !p.door_control_enabled }) });
+    api("/properties").then(setList);
+    onChanged();
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
@@ -437,8 +443,20 @@ function PropertiesTab({ onChanged }: { onChanged: () => void }) {
         <button className={btnCls} onClick={create}>Agregar</button>
       </div>
       <Table
-        head={["Nombre", "Tipo", "Dirección", "Activo"]}
-        rows={list.map((p) => [p.name, p.type, p.address ?? "-", p.active ? "Sí" : "No"])}
+        head={["Nombre", "Tipo", "Dirección", "Apertura remota", "Activo"]}
+        rows={list.map((p) => [
+          p.name,
+          p.type,
+          p.address ?? "-",
+          <button
+            key={p.id}
+            onClick={() => toggleDoor(p)}
+            className={`px-2 py-1 rounded-full text-xs font-semibold ${p.door_control_enabled ? "bg-emerald-600" : "bg-amber-500"}`}
+          >
+            {p.door_control_enabled ? "Con control de puerta" : "Sin control (atención personal)"}
+          </button>,
+          p.active ? "Sí" : "No",
+        ])}
       />
     </div>
   );
