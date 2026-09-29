@@ -8,7 +8,7 @@ export async function GET(req: Request) {
   const unitIds = await scopedUnitIds(g.admin, g.actor);
   let q = g.admin
     .from("invitations")
-    .select("*, units(display_name, unit_number), residents(display_name)")
+    .select("*, units(display_name, unit_number), residents(display_name), properties(name)")
     .order("created_at", { ascending: false });
   if (g.actor.role === "ADMIN") {
     q = unitIds && unitIds.length ? q.in("unit_id", unitIds) : q.in("id", [NONE]);

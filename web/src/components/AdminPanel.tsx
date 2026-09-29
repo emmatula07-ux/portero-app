@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
 import { supabase } from "@/lib/supabase-client";
+import { registerWithInvitation, validateInvitation } from "@/lib/api";
 
 type Tab =
   | "overview"
@@ -52,6 +53,10 @@ export default function AdminPanel() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"login" | "signup" | "forgot">("login");
+  const [signupStep, setSignupStep] = useState<"code" | "credentials">("code");
+  const [inviteCode, setInviteCode] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const [overview, setOverview] = useState<any>({});
   const [units, setUnits] = useState<any[]>([]);
@@ -93,10 +98,12 @@ export default function AdminPanel() {
 
   async function login() {
     setError(null);
+    setBusy(true);
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
+    setBusy(false);
     if (error) {
       setError(error.message);
       return;
@@ -105,6 +112,51 @@ export default function AdminPanel() {
     setAuthed(true);
     setEmail("");
     setPassword("");
+  }
+
+  async function submitSignupCode() {
+    setError(null);
+    setBusy(true);
+    try {
+      await validateInvitation(inviteCode.trim());
+      setSignupStep("credentials");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Código inválido");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function register() {
+    setError(null);
+    setBusy(true);
+    try {
+      await registerWithInvitation({ token: inviteCode.trim(), email: email.trim(), password });
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) throw error;
+      await loadMe();
+      setAuthed(true);
+      setEmail("");
+      setPassword("");
+      setInviteCode("");
+      setAuthMode("login");
+      setSignupStep("code");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo completar el registro");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function forgotPassword() {
+    setError(null);
+    setBusy(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: typeof window !== "undefined" ? `${window.location.origin}/admin` : undefined,
+    });
+    setBusy(false);
+    if (error) setError(error.message);
+    else setError("Te enviamos un mail para recuperar tu contraseña.");
   }
 
   async function logout() {
@@ -174,26 +226,105 @@ export default function AdminPanel() {
       <main className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
         <div className="w-full max-w-sm space-y-4">
           <h1 className="text-2xl font-bold text-center">Panel de administración</h1>
-          <p className="text-zinc-400 text-center text-sm">Ingresá con tu email y contraseña.</p>
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email"
-            autoCapitalize="none"
-            className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && login()}
-            placeholder="Contraseña"
-            className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          {error && <p className="text-red-400 text-sm">{error}</p>}
-          <button onClick={login} className="w-full py-3 rounded-xl bg-blue-600 font-semibold hover:bg-blue-500">
-            Ingresar
-          </button>
+
+          {authMode === "login" && (
+            <>
+              <p className="text-zinc-400 text-center text-sm">Ingresá con tu email y contraseña.</p>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email"
+                autoCapitalize="none"
+                className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && login()}
+                placeholder="Contraseña"
+                className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {error && <p className="text-red-400 text-sm">{error}</p>}
+              <button onClick={login} disabled={busy} className="w-full py-3 rounded-xl bg-blue-600 font-semibold hover:bg-blue-500 disabled:opacity-50">
+                {busy ? "Ingresando…" : "Ingresar"}
+              </button>
+              <div className="flex justify-between text-sm">
+                <button onClick={() => { setError(null); setAuthMode("signup"); setSignupStep("code"); }} className="text-blue-400 hover:underline">
+                  Registrarse
+                </button>
+                <button onClick={() => { setError(null); setAuthMode("forgot"); }} className="text-zinc-400 hover:underline">
+                  Olvidé mi contraseña
+                </button>
+              </div>
+            </>
+          )}
+
+          {authMode === "signup" && (
+            <>
+              {signupStep === "code" ? (
+                <>
+                  <p className="text-zinc-400 text-center text-sm">Ingresá el código de invitación que te dio la administración.</p>
+                  <input
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value)}
+                    placeholder="Código de invitación"
+                    autoCapitalize="characters"
+                    className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {error && <p className="text-red-400 text-sm">{error}</p>}
+                  <button onClick={submitSignupCode} disabled={busy} className="w-full py-3 rounded-xl bg-blue-600 font-semibold hover:bg-blue-500 disabled:opacity-50">
+                    {busy ? "Validando…" : "Continuar"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-zinc-400 text-center text-sm">Creá tu cuenta con email y contraseña.</p>
+                  <input
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Email"
+                    autoCapitalize="none"
+                    className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Contraseña (mín. 6 caracteres)"
+                    className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {error && <p className="text-red-400 text-sm">{error}</p>}
+                  <button onClick={register} disabled={busy} className="w-full py-3 rounded-xl bg-blue-600 font-semibold hover:bg-blue-500 disabled:opacity-50">
+                    {busy ? "Registrando…" : "Registrarme"}
+                  </button>
+                </>
+              )}
+              <button onClick={() => { setError(null); setAuthMode("login"); }} className="w-full text-sm text-zinc-400 hover:underline text-center">
+                Volver al ingreso
+              </button>
+            </>
+          )}
+
+          {authMode === "forgot" && (
+            <>
+              <p className="text-zinc-400 text-center text-sm">Te enviamos un mail para recuperar tu contraseña.</p>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email"
+                autoCapitalize="none"
+                className="w-full rounded-xl bg-zinc-900 border border-zinc-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {error && <p className="text-sm text-center">{error}</p>}
+              <button onClick={forgotPassword} disabled={busy} className="w-full py-3 rounded-xl bg-blue-600 font-semibold hover:bg-blue-500 disabled:opacity-50">
+                {busy ? "Enviando…" : "Enviar mail de recuperación"}
+              </button>
+              <button onClick={() => { setError(null); setAuthMode("login"); }} className="w-full text-sm text-zinc-400 hover:underline text-center">
+                Volver al ingreso
+              </button>
+            </>
+          )}
         </div>
       </main>
     );
@@ -470,11 +601,7 @@ function AdminsTab({ admins, properties, onChanged }: { admins: any[]; propertie
     const res = await api("/admins", { method: "POST", body: JSON.stringify({ email, propertyId }) });
     setEmail("");
     setPropertyId("");
-    if (res.generatedPassword) {
-      onChanged(`Administrador creado.\nEmail: ${email}\nContraseña temporal: ${res.generatedPassword}\n(compártela con el administrador)`);
-    } else {
-      onChanged("Administrador asignado (ya tenía cuenta).");
-    }
+    onChanged(`Invitación generada.\nCódigo: ${res.token}${email ? `\nEmail: ${email}` : ""}\nCompartí este código con el administrador para que se registre desde "Registrarse".`);
   }
 
   async function remove(id: string) {
@@ -485,14 +612,14 @@ function AdminsTab({ admins, properties, onChanged }: { admins: any[]; propertie
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
-        <input className={inputCls} placeholder="Email del administrador" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input className={inputCls} placeholder="Email del administrador (opcional)" value={email} onChange={(e) => setEmail(e.target.value)} />
         <select className={inputCls} value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
           <option value="">Edificio…</option>
           {properties.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
-        <button className={btnCls} onClick={add}>Asignar</button>
+        <button className={btnCls} onClick={add}>Generar invitación</button>
       </div>
       <Table
         head={["Email", "Edificio", ""]}
@@ -809,10 +936,11 @@ function InvitationsTab({ units, residents, invitations, onChanged }: { units: a
         <button className={btnCls} onClick={generate}>Generar invitación</button>
       </div>
       <Table
-        head={["Código", "Unidad", "Residente", "Estado", "Reclamada por"]}
+        head={["Código", "Tipo", "Unidad / Edificio", "Residente", "Estado", "Reclamada por"]}
         rows={invitations.map((i) => [
           <code key={i.id} className="bg-zinc-800 px-2 py-1 rounded">{i.token}</code>,
-          i.units?.display_name ?? "-",
+          i.property_id ? "Admin" : "Residente",
+          i.property_id ? (i.properties?.name ?? "-") : (i.units?.display_name ?? "-"),
           i.residents?.display_name ?? "-",
           i.status,
           i.claimed_by

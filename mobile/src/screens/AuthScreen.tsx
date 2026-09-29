@@ -9,19 +9,22 @@ import {
   Platform,
 } from "react-native";
 import { supabase } from "../lib/supabase";
+import { validateInvitation, registerWithInvitation } from "../lib/api";
 
-type Mode = "password" | "otp";
+type Mode = "login" | "signup" | "forgot";
+type SignupStep = "code" | "credentials";
 
 export default function AuthScreen() {
-  const [mode, setMode] = useState<Mode>("password");
+  const [mode, setMode] = useState<Mode>("login");
+  const [signupStep, setSignupStep] = useState<SignupStep>("code");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [code, setCode] = useState("");
-  const [step, setStep] = useState<"email" | "code">("email");
+  const [inviteCode, setInviteCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
 
-  async function loginWithPassword() {
+  async function login() {
     setError("");
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({
@@ -32,29 +35,63 @@ export default function AuthScreen() {
     if (error) setError(error.message);
   }
 
-  async function sendCode() {
+  async function submitCode() {
     setError("");
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { shouldCreateUser: true },
-    });
+    const { error } = await validateInvitation(inviteCode.trim());
     setLoading(false);
-    if (error) setError(error.message);
-    else setStep("code");
+    if (error) setError(error);
+    else setSignupStep("credentials");
   }
 
-  async function verifyCode() {
+  async function register() {
     setError("");
     setLoading(true);
-    const { error } = await supabase.auth.verifyOtp({
+    const { error: regError } = await registerWithInvitation({
+      token: inviteCode.trim(),
       email: email.trim(),
-      token: code.trim(),
-      type: "email",
+      password,
+    });
+    if (regError) {
+      setLoading(false);
+      setError(regError);
+      return;
+    }
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
     });
     setLoading(false);
     if (error) setError(error.message);
   }
+
+  async function forgot() {
+    setError("");
+    setInfo("");
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+    setLoading(false);
+    if (error) setError(error.message);
+    else setInfo("Te enviamos un mail para recuperar tu contraseña.");
+  }
+
+  const title =
+    mode === "login"
+      ? "Ingresar"
+      : mode === "signup"
+      ? signupStep === "code"
+        ? "Registro"
+        : "Crear tu cuenta"
+      : "Recuperar contraseña";
+
+  const subtitle =
+    mode === "login"
+      ? "Ingresá con tu email y contraseña."
+      : mode === "signup"
+      ? signupStep === "code"
+        ? "Ingresá el código de invitación que te dio la administración."
+        : "Definí tu email y contraseña."
+      : "Te enviamos un mail para recuperar tu contraseña.";
 
   return (
     <KeyboardAvoidingView
@@ -62,82 +99,136 @@ export default function AuthScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <Text style={styles.title}>Portero Inteligente</Text>
-      <Text style={styles.subtitle}>
-        {mode === "password"
-          ? "Ingresá con tu email y contraseña"
-          : step === "email"
-          ? "Ingresá tu email para recibir un código"
-          : "Ingresá el código recibido"}
-      </Text>
+      <Text style={styles.subtitle}>{subtitle}</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="tu@email.com"
-        placeholderTextColor="#71717a"
-        keyboardType="email-address"
-        autoCapitalize="none"
-        value={email}
-        onChangeText={setEmail}
-      />
+      {mode === "login" && (
+        <>
+          <TextInput
+            style={styles.input}
+            placeholder="tu@email.com"
+            placeholderTextColor="#71717a"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            value={email}
+            onChangeText={setEmail}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Contraseña"
+            placeholderTextColor="#71717a"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <TouchableOpacity style={styles.button} onPress={login} disabled={loading}>
+            <Text style={styles.buttonText}>{loading ? "Ingresando…" : "Ingresar"}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              setError("");
+              setMode("signup");
+              setSignupStep("code");
+            }}
+          >
+            <Text style={styles.link}>Registrarse</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              setError("");
+              setMode("forgot");
+            }}
+          >
+            <Text style={styles.linkMuted}>Olvidé mi contraseña</Text>
+          </TouchableOpacity>
+        </>
+      )}
 
-      {mode === "password" ? (
-        <TextInput
-          style={styles.input}
-          placeholder="Contraseña"
-          placeholderTextColor="#71717a"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
-      ) : step === "code" ? (
-        <TextInput
-          style={styles.input}
-          placeholder="Código de 6 dígitos"
-          placeholderTextColor="#71717a"
-          keyboardType="number-pad"
-          value={code}
-          onChangeText={setCode}
-        />
-      ) : null}
+      {mode === "signup" && signupStep === "code" && (
+        <>
+          <TextInput
+            style={styles.input}
+            placeholder="Código de invitación"
+            placeholderTextColor="#71717a"
+            autoCapitalize="characters"
+            value={inviteCode}
+            onChangeText={setInviteCode}
+          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <TouchableOpacity style={styles.button} onPress={submitCode} disabled={loading}>
+            <Text style={styles.buttonText}>{loading ? "Validando…" : "Continuar"}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              setError("");
+              setMode("login");
+            }}
+          >
+            <Text style={styles.link}>Volver al ingreso</Text>
+          </TouchableOpacity>
+        </>
+      )}
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {mode === "signup" && signupStep === "credentials" && (
+        <>
+          <TextInput
+            style={styles.input}
+            placeholder="tu@email.com"
+            placeholderTextColor="#71717a"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            value={email}
+            onChangeText={setEmail}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Contraseña (mín. 6 caracteres)"
+            placeholderTextColor="#71717a"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <TouchableOpacity style={styles.button} onPress={register} disabled={loading}>
+            <Text style={styles.buttonText}>{loading ? "Registrando…" : "Registrarme"}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              setError("");
+              setSignupStep("code");
+            }}
+          >
+            <Text style={styles.link}>Volver al código</Text>
+          </TouchableOpacity>
+        </>
+      )}
 
-      <TouchableOpacity
-        style={styles.button}
-        onPress={
-          mode === "password"
-            ? loginWithPassword
-            : step === "email"
-            ? sendCode
-            : verifyCode
-        }
-        disabled={loading}
-      >
-        <Text style={styles.buttonText}>
-          {loading
-            ? "Esperando…"
-            : mode === "password"
-            ? "Ingresar"
-            : step === "email"
-            ? "Enviar código"
-            : "Verificar"}
-        </Text>
-      </TouchableOpacity>
-
-      {mode === "password" ? (
-        <TouchableOpacity onPress={() => setMode("otp")}>
-          <Text style={styles.link}>Ingresar con código</Text>
-        </TouchableOpacity>
-      ) : (
-        <TouchableOpacity
-          onPress={() => {
-            setMode("password");
-            setStep("email");
-            setCode("");
-          }}
-        >
-          <Text style={styles.link}>Volver a contraseña</Text>
-        </TouchableOpacity>
+      {mode === "forgot" && (
+        <>
+          <TextInput
+            style={styles.input}
+            placeholder="tu@email.com"
+            placeholderTextColor="#71717a"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            value={email}
+            onChangeText={setEmail}
+          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {info ? <Text style={styles.info}>{info}</Text> : null}
+          <TouchableOpacity style={styles.button} onPress={forgot} disabled={loading}>
+            <Text style={styles.buttonText}>{loading ? "Enviando…" : "Enviar mail de recuperación"}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              setError("");
+              setInfo("");
+              setMode("login");
+            }}
+          >
+            <Text style={styles.link}>Volver al ingreso</Text>
+          </TouchableOpacity>
+        </>
       )}
     </KeyboardAvoidingView>
   );
@@ -158,6 +249,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   error: { color: "#f87171", marginTop: 4 },
+  info: { color: "#34d399", marginTop: 4 },
   button: {
     backgroundColor: "#2563eb",
     borderRadius: 12,
@@ -167,4 +259,5 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
   link: { color: "#60a5fa", textAlign: "center", marginTop: 16 },
+  linkMuted: { color: "#a1a1aa", textAlign: "center", marginTop: 12 },
 });

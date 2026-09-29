@@ -68,3 +68,21 @@ export async function getVisitStatus(
     doorControl: boolean;
   };
 }
+
+export async function validateInvitation(
+  token: string,
+): Promise<{ valid: boolean; role: string; email: string | null }> {
+  return (await post("validate-invitation", { token })) as {
+    valid: boolean;
+    role: string;
+    email: string | null;
+  };
+}
+
+export async function registerWithInvitation(input: {
+  token: string;
+  email: string;
+  password: string;
+}): Promise<{ ok: boolean; role: string }> {
+  return (await post("register-with-invitation", input)) as { ok: boolean; role: string };
+}

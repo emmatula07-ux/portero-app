@@ -42,3 +42,37 @@ export interface ClaimResult {
 export function claimInvitation(token: string) {
   return callFn<ClaimResult>("claim-invitation", { token });
 }
+
+async function callFnPublic<T>(
+  name: string,
+  body: unknown,
+): Promise<{ data?: T; error?: string }> {
+  if (!FUNCTIONS_URL) return { error: "Falta EXPO_PUBLIC_SUPABASE_URL" };
+  const res = await fetch(`${FUNCTIONS_URL}/${name}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { error: (data as { error?: string })?.error ?? "Error" };
+  return { data: data as T };
+}
+
+export interface ValidateInvitationResult {
+  valid: boolean;
+  role: string;
+  email: string | null;
+}
+
+export function validateInvitation(token: string) {
+  return callFnPublic<ValidateInvitationResult>("validate-invitation", { token });
+}
+
+export interface RegisterResult {
+  ok: boolean;
+  role: string;
+}
+
+export function registerWithInvitation(input: { token: string; email: string; password: string }) {
+  return callFnPublic<RegisterResult>("register-with-invitation", input);
+}
