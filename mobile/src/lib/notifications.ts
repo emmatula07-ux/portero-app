@@ -3,6 +3,7 @@ import * as Device from "expo-device";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { supabase } from "./supabase";
+import { registerDevice, revokeDevice } from "./api";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -73,7 +74,9 @@ export async function stopVisitAlarm() {
 
 const IS_EXPO_GO = Constants.appOwnership === "expo";
 
-export async function registerPushToken(userId: string) {
+let currentPushToken: string | null = null;
+
+export async function registerPushToken(): Promise<boolean> {
   try {
     if (IS_EXPO_GO) {
       console.warn("Push no disponible en Expo Go. Usá un development build (expo run:android / eas build).");
@@ -108,31 +111,32 @@ export async function registerPushToken(userId: string) {
     const platform = Platform.OS === "ios" ? "IOS" : "ANDROID";
     const deviceName = Device.modelName ?? "Dispositivo";
 
-    const { data: existing } = await supabase
-      .from("resident_devices")
-      .select("id")
-      .eq("push_token", token.data)
-      .maybeSingle();
+    currentPushToken = token.data;
 
-    if (existing) {
-      await supabase
-        .from("resident_devices")
-        .update({ profile_id: userId, active: true, last_seen_at: new Date().toISOString() })
-        .eq("id", existing.id);
-    } else {
-      await supabase.from("resident_devices").insert({
-        profile_id: userId,
-        platform,
-        push_token: token.data,
-        device_name: deviceName,
-        active: true,
-        last_seen_at: new Date().toISOString(),
-      });
+    const { error } = await registerDevice({
+      push_token: token.data,
+      platform,
+      device_name: deviceName,
+    });
+    if (error) {
+      console.warn("No se pudo registrar el token de push:", error);
+      return false;
     }
+
     console.log("Push registrado correctamente.");
     return true;
   } catch (e) {
     console.warn("No se pudo registrar el token de push:", e);
     return false;
+  }
+}
+
+export async function revokePushToken(): Promise<void> {
+  if (!currentPushToken) return;
+  try {
+    await revokeDevice(currentPushToken);
+    currentPushToken = null;
+  } catch (e) {
+    console.warn("No se pudo revocar el token de push:", e);
   }
 }

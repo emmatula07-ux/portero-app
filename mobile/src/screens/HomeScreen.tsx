@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
-import { registerPushToken, onVisitNotification } from "../lib/notifications";
+import { registerPushToken, revokePushToken, onVisitNotification } from "../lib/notifications";
 import { startAlarm, stopAlarm } from "../lib/nativeAlarm";
 import { playSuccessSound, playErrorSound } from "../lib/sounds";
 import { openAccess } from "../lib/api";
@@ -148,7 +148,7 @@ export default function HomeScreen({ session }: { session: Session }) {
 
   useEffect(() => {
     load();
-    registerPushToken(session.user.id);
+    registerPushToken();
   }, [load, session.user.id]);
 
   useEffect(() => {
@@ -210,8 +210,13 @@ export default function HomeScreen({ session }: { session: Session }) {
 
   async function onRefresh() {
     setRefreshing(true);
-    await Promise.all([load(), registerPushToken(session.user.id)]);
+    await Promise.all([load(), registerPushToken()]);
     setRefreshing(false);
+  }
+
+  async function logout() {
+    await revokePushToken();
+    await supabase.auth.signOut();
   }
 
   const canOpen = (v: Visit) =>
@@ -245,7 +250,7 @@ export default function HomeScreen({ session }: { session: Session }) {
               {unit?.display_name || unit?.unit_number || "Unidad"}
             </Text>
           </View>
-          <TouchableOpacity onPress={() => supabase.auth.signOut()}>
+          <TouchableOpacity onPress={logout}>
             <Text style={styles.signOut}>Salir</Text>
           </TouchableOpacity>
         </View>

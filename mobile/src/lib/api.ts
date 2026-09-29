@@ -76,3 +76,11 @@ export interface RegisterResult {
 export function registerWithInvitation(input: { token: string; email: string; password: string }) {
   return callFnPublic<RegisterResult>("register-with-invitation", input);
 }
+
+export function registerDevice(input: { push_token: string; platform: string; device_name: string }) {
+  return callFn<{ ok: boolean }>("register-device", input);
+}
+
+export function revokeDevice(push_token: string) {
+  return callFn<{ ok: boolean }>("revoke-device", { push_token });
+}
