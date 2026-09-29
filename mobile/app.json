@@ -22,7 +22,8 @@
         {
           "recordAudioAndroid": false
         }
-      ]
+      ],
+      "./plugins/withAndroidAbi"
     ],
     "ios": {
       "supportsTablet": true,

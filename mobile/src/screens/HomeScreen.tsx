@@ -9,7 +9,8 @@ import {
 } from "react-native";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
-import { registerPushToken, onVisitNotification, startVisitAlarm, stopVisitAlarm } from "../lib/notifications";
+import { registerPushToken, onVisitNotification } from "../lib/notifications";
+import { startAlarm, stopAlarm } from "../lib/nativeAlarm";
 import { playSuccessSound, playErrorSound } from "../lib/sounds";
 import { openAccess } from "../lib/api";
 
@@ -68,6 +69,7 @@ export default function HomeScreen({ session }: { session: Session }) {
   const [opening, setOpening] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [doorControl, setDoorControl] = useState(true);
+  const [showAllVisits, setShowAllVisits] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = useCallback((t: Toast) => {
@@ -79,7 +81,7 @@ export default function HomeScreen({ session }: { session: Session }) {
   useEffect(() => {
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current);
-      stopVisitAlarm();
+      stopAlarm();
     };
   }, []);
 
@@ -122,14 +124,14 @@ export default function HomeScreen({ session }: { session: Session }) {
 
     const pending = loaded.find((v) => v.status === "PENDING");
     if (pending) {
-      startVisitAlarm(
-        "🔔 Visita en curso",
+      startAlarm(
+        "Visita en curso",
         pending.visitor_name
           ? `${pending.visitor_name} está esperando en ${pending.access_points?.name ?? "la entrada"}.`
           : "Tenés una visita esperando en la entrada.",
       );
     } else {
-      stopVisitAlarm();
+      stopAlarm();
     }
 
     const { data: perms } = await supabase
@@ -226,6 +228,9 @@ export default function HomeScreen({ session }: { session: Session }) {
     return rank(a) - rank(b) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
+  const hasMoreVisits = sorted.length > 5;
+  const visibleVisits = showAllVisits ? sorted : sorted.slice(0, 5);
+
   return (
     <View style={styles.root}>
       <ScrollView
@@ -260,7 +265,7 @@ export default function HomeScreen({ session }: { session: Session }) {
 
         <Text style={styles.sectionTitle}>Visitas</Text>
         {sorted.length === 0 && <Text style={styles.empty}>No tenés visitas todavía.</Text>}
-        {sorted.map((v) => {
+        {visibleVisits.map((v) => {
           const highlight = v.status === "PENDING";
           return (
             <View key={v.id} style={[styles.card, highlight && styles.cardPending]}>
@@ -299,6 +304,14 @@ export default function HomeScreen({ session }: { session: Session }) {
             </View>
           );
         })}
+
+        {hasMoreVisits && (
+          <TouchableOpacity style={styles.seeMoreBtn} onPress={() => setShowAllVisits((s) => !s)}>
+            <Text style={styles.seeMoreText}>
+              {showAllVisits ? "Ver menos" : `Ver más (${sorted.length - 5} restantes)`}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {doorControl && (
           <>
@@ -389,6 +402,8 @@ const styles = StyleSheet.create({
   btnReject: { backgroundColor: "#dc2626", flex: 1 },
   btnOpen: { backgroundColor: "#2563eb" },
   btnText: { color: "#fff", fontWeight: "600" },
+  seeMoreBtn: { backgroundColor: "#18181b", borderRadius: 10, paddingVertical: 12, alignItems: "center", marginBottom: 4 },
+  seeMoreText: { color: "#60a5fa", fontWeight: "600" },
   toast: {
     position: "absolute",
     top: 54,

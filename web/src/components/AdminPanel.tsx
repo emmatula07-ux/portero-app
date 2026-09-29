@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
 import { supabase } from "@/lib/supabase-client";
 
 type Tab =
@@ -314,7 +314,7 @@ export default function AdminPanel() {
           <ResidentsTab units={units} residents={residents} onChanged={(msg) => handleChanged(msg ?? "Residente actualizado")} />
         )}
         {tab === "access" && (
-          <AccessTab propertyId={propertyId} accessPoints={accessPoints} controllers={controllers} onChanged={() => handleChanged("Acceso actualizado")} />
+          <AccessTab propertyId={propertyId} accessPoints={accessPoints} controllers={controllers} isDev={isDev} onChanged={() => handleChanged("Acceso actualizado")} />
         )}
         {tab === "permissions" && (
           <PermissionsTab units={units} accessPoints={accessPoints} permissions={permissions} onChanged={() => handleChanged("Permiso actualizado")} />
@@ -597,8 +597,9 @@ function ResidentsTab({ units, residents, onChanged }: { units: any[]; residents
   );
 }
 
-function AccessTab({ propertyId, accessPoints, controllers, onChanged }: { propertyId: string; accessPoints: any[]; controllers: any[]; onChanged: () => void }) {
+function AccessTab({ propertyId, accessPoints, controllers, isDev, onChanged }: { propertyId: string; accessPoints: any[]; controllers: any[]; isDev: boolean; onChanged: () => void }) {
   const [form, setForm] = useState({ name: "", type: "MAIN_ENTRANCE", access_controller_id: "" });
+  const qrWrapRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   async function create() {
     await api("/access-points", { method: "POST", body: JSON.stringify({ property_id: propertyId, ...form }) });
@@ -614,6 +615,16 @@ function AccessTab({ propertyId, accessPoints, controllers, onChanged }: { prope
   async function reassign(id: string, accessControllerId: string) {
     await api(`/access-points/${id}`, { method: "PATCH", body: JSON.stringify({ access_controller_id: accessControllerId || null }) });
     onChanged();
+  }
+
+  function downloadQr(id: string, name: string) {
+    const wrap = qrWrapRefs.current[id];
+    const canvas = wrap?.querySelector("canvas");
+    if (!canvas) return;
+    const a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = `qr-${name.replace(/\s+/g, "_")}.png`;
+    a.click();
   }
 
   return (
@@ -653,8 +664,14 @@ function AccessTab({ propertyId, accessPoints, controllers, onChanged }: { prope
                 </div>
                 <div className="flex-1 space-y-2">
                   <p className="text-xs text-zinc-400 break-all">{url}</p>
-                  <button className={btnCls + " bg-zinc-700"} onClick={() => rotate(a.id)}>Rotar QR</button>
+                  <div className="flex flex-wrap gap-2">
+                    <button className={btnCls + " bg-emerald-600"} onClick={() => downloadQr(a.id, a.name)}>Descargar QR</button>
+                    {isDev && <button className={btnCls + " bg-zinc-700"} onClick={() => rotate(a.id)}>Rotar QR</button>}
+                  </div>
                 </div>
+              </div>
+              <div ref={(el) => { qrWrapRefs.current[a.id] = el; }} className="hidden">
+                <QRCodeCanvas value={url} size={512} includeMargin />
               </div>
               <div className="border-t border-zinc-800 pt-2">
                 <p className="text-xs text-zinc-400 mb-1">

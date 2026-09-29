@@ -12,6 +12,7 @@
     "expo-device": "~57.0.2",
     "expo-notifications": "~57.0.20",
     "expo-status-bar": "~57.0.1",
+    "portero-alarm": "file:./modules/portero-alarm",
     "react": "19.2.3",
     "react-native": "0.86.3",
     "react-native-url-polyfill": "^4.0.0"
