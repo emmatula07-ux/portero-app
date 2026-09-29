@@ -45,7 +45,7 @@ export async function POST(req: Request) {
   if (!body.unit_id || !(await canAccessUnit(g.admin, g.actor, body.unit_id))) {
     return err("No autorizado sobre esta unidad", 403);
   }
-  const token = crypto.randomUUID().slice(0, 8).toUpperCase();
+  const token = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
   const { data, error } = await g.admin
     .from("invitations")
     .insert({

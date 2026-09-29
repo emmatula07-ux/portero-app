@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   const propertyId = String(body.propertyId ?? "");
   if (!propertyId) return err("Edificio requerido", 400);
 
-  const token = crypto.randomUUID().slice(0, 8).toUpperCase();
+  const token = crypto.randomUUID().replace(/-/g, "").slice(0, 16).toUpperCase();
   const { data, error } = await g.admin
     .from("invitations")
     .insert({

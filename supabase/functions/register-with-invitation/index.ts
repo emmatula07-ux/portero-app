@@ -1,5 +1,5 @@
 import { adminClient } from "../_shared/clients.ts";
-import { json, error, readJson } from "../_shared/http.ts";
+import { json, error, readJson, clientIp } from "../_shared/http.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return json({});
@@ -15,6 +15,14 @@ Deno.serve(async (req) => {
     if (password.length < 6) return error("La contraseña debe tener al menos 6 caracteres", 400);
 
     const admin = adminClient();
+
+    const ip = clientIp(req);
+    const { data: allowed } = await admin.rpc("take_rate_limit", {
+      p_key: `register-invite:${ip}`,
+      p_limit: 5,
+      p_window_seconds: 3600,
+    });
+    if (!allowed) return error("Demasiados registros. Intentá de nuevo más tarde.", 429);
 
     const { data: invitation } = await admin
       .from("invitations")
