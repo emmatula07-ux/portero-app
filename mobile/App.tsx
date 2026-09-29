@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "./src/lib/supabase";
@@ -12,37 +13,48 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [hasResident, setHasResident] = useState(false);
 
-  useEffect(() => {
-    ensureNotificationChannels();
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
-    return () => sub.subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function checkResident(userId: string) {
+  const applySession = useCallback(async (s: Session | null) => {
+    setSession(s);
+    if (s?.user) {
       const { data } = await supabase
         .from("residents")
         .select("id")
-        .eq("profile_id", userId)
+        .eq("profile_id", s.user.id)
         .eq("active", true)
         .limit(1);
-      if (!cancelled) setHasResident((data?.length ?? 0) > 0);
-    }
-    if (session?.user) {
-      setLoading(false);
-      checkResident(session.user.id);
+      setHasResident((data?.length ?? 0) > 0);
     } else {
-      setLoading(false);
       setHasResident(false);
     }
-    return () => {
-      cancelled = true;
-    };
-  }, [session]);
+  }, []);
 
-  if (loading) return null;
+  useEffect(() => {
+    ensureNotificationChannels();
+
+    let restored = false;
+
+    supabase.auth.getSession().then(async ({ data }) => {
+      await applySession(data.session);
+      restored = true;
+      setLoading(false);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+      if (!restored) return;
+      applySession(s);
+    });
+
+    return () => sub.subscription.unsubscribe();
+  }, [applySession]);
+
+  if (loading) {
+    return (
+      <View style={styles.loader}>
+        <StatusBar style="light" />
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    );
+  }
 
   return (
     <>
@@ -57,3 +69,12 @@ export default function App() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  loader: {
+    flex: 1,
+    backgroundColor: "#09090b",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+});
