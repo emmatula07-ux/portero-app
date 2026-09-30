@@ -873,12 +873,17 @@ function PermissionsTab({ units, accessPoints, permissions, onChanged }: { units
 }
 
 function ControllersTab({ propertyId, controllers, onChanged }: { propertyId: string; controllers: any[]; onChanged: () => void }) {
-  const [form, setForm] = useState({ name: "", type: "MOCK", url: "", secret: "" });
+  const [form, setForm] = useState({ name: "", type: "MOCK", url: "", secret: "", pulseMs: "1000" });
 
   async function create() {
-    const config = form.type === "MOCK" ? null : { url: form.url, secret: form.secret || null };
+    let config: Record<string, unknown> | null = null;
+    if (form.type === "SHELLY") {
+      config = { url: form.url, pulseMs: Number(form.pulseMs) || 1000, secret: form.secret || null };
+    } else if (form.type !== "MOCK") {
+      config = { url: form.url, secret: form.secret || null };
+    }
     await api("/access-controllers", { method: "POST", body: JSON.stringify({ property_id: propertyId, name: form.name, type: form.type, config }) });
-    setForm({ name: "", type: "MOCK", url: "", secret: "" });
+    setForm({ name: "", type: "MOCK", url: "", secret: "", pulseMs: "1000" });
     onChanged();
   }
 
@@ -888,12 +893,16 @@ function ControllersTab({ propertyId, controllers, onChanged }: { propertyId: st
         <input className={inputCls} placeholder="Nombre" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         <select className={inputCls} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
           <option value="MOCK">MOCK (simulado)</option>
+          <option value="SHELLY">Shelly (contacto seco)</option>
           <option value="LOCAL_GATEWAY">Gateway local (HTTP)</option>
           <option value="HTTP">HTTP API</option>
         </select>
         {form.type !== "MOCK" && (
           <>
-            <input className={inputCls} placeholder="URL del gateway" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} />
+            <input className={inputCls} placeholder={form.type === "SHELLY" ? "URL del Shelly (ej http://192.168.1.50)" : "URL del gateway"} value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} />
+            {form.type === "SHELLY" && (
+              <input className={inputCls + " max-w-[110px]"} placeholder="Pulso ms" value={form.pulseMs} onChange={(e) => setForm({ ...form, pulseMs: e.target.value })} />
+            )}
             <input className={inputCls} placeholder="Secreto (opcional)" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })} />
           </>
         )}
